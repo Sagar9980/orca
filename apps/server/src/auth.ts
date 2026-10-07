@@ -50,7 +50,9 @@ export const auth = betterAuth({
 
   emailVerification: {
     sendOnSignUp: true,
-    sendOnSignIn: true,
+    // The web app asks for a new link itself when sign-in fails as unverified. Sending it here would
+    // need a callbackURL on sign-in, and Better Auth's client redirects to that URL after every success.
+    sendOnSignIn: false,
     autoSignInAfterVerification: true,
     expiresIn: 60 * 60,
     sendVerificationEmail: async ({ user, url }) => deliver(mail.verifyEmail(user, url)),
