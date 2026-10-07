@@ -14,11 +14,12 @@ export interface RunState {
 /**
  * Applies one event and returns a new state. Pure: the input state is never
  * mutated. Events at or below lastSeq are ignored, so replays are safe.
- * Returns undefined until a "run.started" event has been seen.
+ * A "run.started" for a different run replaces the current one; events for
+ * any other run are ignored. Returns undefined until a run has started.
  */
 export function applyEvent(state: RunState | undefined, event: RunEvent): RunState | undefined {
   if (event.type === "run.started") {
-    if (state && event.seq <= state.lastSeq) return state;
+    if (state && state.run.id === event.run.id && event.seq <= state.lastSeq) return state;
     return {
       run: event.run,
       agents: {},
@@ -28,7 +29,7 @@ export function applyEvent(state: RunState | undefined, event: RunEvent): RunSta
       lastSeq: event.seq,
     };
   }
-  if (!state || event.seq <= state.lastSeq) return state;
+  if (!state || event.runId !== state.run.id || event.seq <= state.lastSeq) return state;
   const next: RunState = { ...state, lastSeq: event.seq };
 
   switch (event.type) {

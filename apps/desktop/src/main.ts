@@ -8,7 +8,7 @@ function createWindow() {
     width: 1200,
     height: 800,
     title: "Orca",
-    backgroundColor: "#0f1115",
+    backgroundColor: "#08131c",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
