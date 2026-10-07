@@ -2,11 +2,12 @@ import { useEffect, useRef, type ComponentType } from "react";
 import { authClient } from "./auth/client";
 import { Account } from "./auth/Account";
 import { ForgotPassword, Goodbye, ResetPassword, SignIn, SignUp } from "./auth/pages";
-import { Console } from "./components/Console";
 import { useTheme } from "./lib/hooks";
+import { resetProjects } from "./projects/store";
 import { Link, navigate, useLocation } from "./router";
+import { Shell, type ShellRoute } from "./shell/Shell";
 
-/** Pages for signed-out visitors. Signed-in visitors are sent to the console. */
+/** Pages for signed-out visitors. Signed-in visitors are sent to the app. */
 const GUEST_ONLY: Record<string, ComponentType> = {
   "/sign-in": SignIn,
   "/sign-up": SignUp,
@@ -18,6 +19,15 @@ const PUBLIC: Record<string, ComponentType> = {
   "/goodbye": Goodbye,
 };
 
+/** "/", "/p/:slug" and "/p/:slug/r/:runId". */
+function shellRoute(path: string): ShellRoute | null {
+  if (path === "/") return { view: "home" };
+  const m = path.match(/^\/p\/([^/]+)(?:\/r\/([^/]+))?$/);
+  if (!m) return null;
+  const slug = decodeURIComponent(m[1]!);
+  return m[2] ? { view: "run", slug, runId: decodeURIComponent(m[2]) } : { view: "project", slug };
+}
+
 export function App() {
   const toggleTheme = useTheme();
   const { path } = useLocation();
@@ -27,9 +37,18 @@ export function App() {
   const checked = useRef(false);
   if (!isPending) checked.current = true;
 
+  // A different person (or nobody) is signed in: drop the previous user's projects.
+  const userId = session?.user.id ?? null;
+  const lastUser = useRef(userId);
+  useEffect(() => {
+    if (lastUser.current !== userId) resetProjects();
+    lastUser.current = userId;
+  }, [userId]);
+
   const Public: ComponentType | undefined = PUBLIC[path];
   const GuestOnly: ComponentType | undefined = GUEST_ONLY[path];
-  const known = Public || GuestOnly || path === "/" || path === "/account";
+  const route = shellRoute(path);
+  const known = Public || GuestOnly || route || path === "/account";
 
   if (Public) return <Public />;
   if (isPending && !checked.current) return <div className="boot">Starting Orca…</div>;
@@ -49,7 +68,7 @@ export function App() {
   }
   if (GuestOnly) return <Redirect to="/" />;
   if (path === "/account") return <Account session={session} />;
-  return <Console user={session.user} onToggleTheme={toggleTheme} />;
+  return <Shell route={route!} user={session.user} onToggleTheme={toggleTheme} />;
 }
 
 function Redirect({ to }: { to: string }) {

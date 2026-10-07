@@ -42,6 +42,7 @@ export function createDemoSource(): RunSource {
   let seq = 0;
   let gen = 0;
   let paused = false;
+  let closed = false;
   let pausedAt = 0;
   let pausedMs = 0;
   let resumeWaiters: (() => void)[] = [];
@@ -300,12 +301,20 @@ export function createDemoSource(): RunSource {
   return {
     subscribe(listener) {
       listeners.add(listener);
-      if (log.length === 0) startRun();
-      else for (const event of log) listener(event);
+      if (log.length === 0 || closed) {
+        closed = false;
+        startRun();
+      } else for (const event of log) listener(event);
       return () => {
         listeners.delete(listener);
       };
     },
     send,
+    close() {
+      closed = true;
+      gen++;
+      clearInterval(tokenTimer);
+      humanWaiters.clear();
+    },
   };
 }
