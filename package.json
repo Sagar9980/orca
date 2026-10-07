@@ -3,12 +3,13 @@
   "private": true,
   "version": "0.0.1",
   "scripts": {
-    "dev": "concurrently -n server,web,desktop -c blue,green,magenta \"pnpm --filter @orca/server dev\" \"pnpm --filter @orca/web dev\" \"pnpm --filter @orca/desktop dev\"",
-    "dev:web": "pnpm --filter @orca/web dev",
-    "dev:server": "pnpm --filter @orca/server dev",
+    "dev": "pnpm build:shared && concurrently -n shared,server,web,desktop -c gray,blue,green,magenta \"pnpm --filter @orca/shared dev\" \"pnpm --filter @orca/server dev\" \"pnpm --filter @orca/web dev\" \"pnpm --filter @orca/desktop dev\"",
+    "dev:web": "pnpm build:shared && pnpm --filter @orca/web dev",
+    "dev:server": "pnpm build:shared && pnpm --filter @orca/server dev",
     "dev:desktop": "pnpm --filter @orca/desktop dev",
+    "build:shared": "pnpm --filter @orca/shared build",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm build:shared && pnpm -r typecheck"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",

@@ -1,5 +1,6 @@
 packages:
   - "apps/*"
+  - "packages/*"
 
 # pnpm 10 blocks dependency install scripts by default; these need them
 # (electron downloads its binary, esbuild fetches its native build).
