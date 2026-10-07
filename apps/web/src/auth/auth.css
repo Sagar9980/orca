@@ -1,0 +1,118 @@
+/* Auth and account pages. Same tokens as the console (index.css).
+   Layout: a deep-water story panel beside a quiet form column; stacks on phones. */
+
+/* ---------- Split layout ---------- */
+.auth { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); min-height: calc(100vh - 44px); max-width: 1320px; margin-inline: auto; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: var(--panel); }
+.auth-story { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 36px 40px; overflow: hidden; background-color: var(--bg); background-image: radial-gradient(var(--line) 1px, transparent 1.3px); background-size: 22px 22px; border-right: 1px solid var(--line); }
+.auth-brand { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 10px; font: 700 20px/1 var(--f-display); letter-spacing: -0.02em; color: var(--fg); text-decoration: none; }
+.auth-brand svg { width: 26px; height: 26px; color: var(--accent); }
+.auth-brand-compact { display: none; margin-bottom: 28px; }
+
+.auth-sonar { position: absolute; left: 62%; top: 46%; width: 0; height: 0; }
+.auth-sonar::before { content: ""; position: absolute; width: 1100px; height: 1100px; left: -550px; top: -550px; border-radius: 50%; background: repeating-radial-gradient(circle, transparent 0 78px, var(--ring) 79px 80px, transparent 81px 110px); mask-image: radial-gradient(circle, #000 30%, transparent 68%); }
+.auth-sonar span { position: absolute; width: 60px; height: 60px; left: -30px; top: -30px; border-radius: 50%; border: 1px solid var(--accent); opacity: 0; animation: auth-ping 7.5s cubic-bezier(0.2, 0.6, 0.3, 1) infinite; }
+.auth-sonar span:nth-child(2) { animation-delay: 2.5s; }
+.auth-sonar span:nth-child(3) { animation-delay: 5s; }
+.auth-sonar::after { content: ""; position: absolute; width: 10px; height: 10px; left: -5px; top: -5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 18px 4px color-mix(in oklab, var(--accent) 45%, transparent); }
+@keyframes auth-ping { 0% { transform: scale(0.3); opacity: 0.55; } 100% { transform: scale(14); opacity: 0; } }
+
+.auth-pitch { position: relative; z-index: 1; max-width: 30ch; }
+.auth-pitch-head { margin: 0 0 22px; font: 750 clamp(30px, 3.2vw, 42px)/1.05 var(--f-display); letter-spacing: -0.03em; text-wrap: balance; }
+.auth-pitch ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.auth-pitch li { display: grid; grid-template-columns: 74px 1fr; gap: 10px; align-items: baseline; color: var(--muted); font-size: 14px; }
+.auth-pitch .eyebrow { color: var(--accent); }
+
+.auth-main { display: grid; place-items: center; padding: 48px 32px; }
+.auth-card { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 18px; }
+.auth-card h1 { margin: 0; font: 750 32px/1.05 var(--f-display); letter-spacing: -0.025em; text-wrap: balance; }
+.auth-lede { margin: -6px 0 4px; color: var(--muted); font-size: 14.5px; line-height: 1.55; }
+.auth-lede strong, .notice strong { color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
+.auth-form { display: flex; flex-direction: column; gap: 16px; }
+.auth-row { display: flex; justify-content: flex-end; margin-top: -6px; font-size: 13px; }
+.auth-row a, .auth-footer a { color: var(--accent); text-underline-offset: 3px; }
+.auth-footer { padding-top: 16px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+.auth-steps { display: flex; flex-direction: column; gap: 14px; color: var(--muted); font-size: 14px; }
+.auth-steps p { margin: 0; }
+
+/* ---------- Form controls ---------- */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-row { display: flex; justify-content: space-between; align-items: baseline; }
+.field label, .field-row label { font-size: 13px; font-weight: 600; }
+.field input { height: 42px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--card); color: var(--fg); font-size: 14.5px; transition: border-color 0.15s, box-shadow 0.15s; }
+.field input:hover { border-color: color-mix(in oklab, var(--accent) 35%, var(--line-2)); }
+.field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent); }
+.field-hint { margin: 0; font-size: 12.5px; color: var(--dim); }
+.hint-ok { color: var(--mint); }
+.check { display: flex; align-items: flex-start; gap: 9px; font-size: 13.5px; color: var(--muted); cursor: pointer; }
+.check input { margin-top: 3px; accent-color: var(--accent); }
+
+.btn-primary, .btn-secondary, .btn-social { display: inline-flex; align-items: center; justify-content: center; gap: 9px; height: 42px; padding: 0 18px; border-radius: 10px; font-size: 14px; font-weight: 600; text-decoration: none; transition: background 0.15s, border-color 0.15s, opacity 0.15s; }
+.btn-primary { border: 0; background: var(--accent); color: var(--bg); }
+.btn-primary:hover:not(:disabled) { background: color-mix(in oklab, var(--accent) 86%, var(--fg)); }
+.btn-secondary { border: 1px solid var(--line-2); background: var(--card); color: var(--fg); align-self: flex-start; }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); }
+.btn-small { height: 32px; padding: 0 12px; font-size: 12.5px; }
+.btn-social { width: 100%; border: 1px solid var(--line-2); background: var(--card); color: var(--fg); }
+.btn-social:hover:not(:disabled) { border-color: var(--accent); }
+.btn-social svg { width: 17px; height: 17px; }
+.btn-danger { background: var(--coral); color: var(--card); }
+.btn-danger:hover:not(:disabled) { background: color-mix(in oklab, var(--coral) 86%, var(--fg)); }
+.btn-danger-outline { color: var(--coral); border-color: color-mix(in oklab, var(--coral) 50%, transparent); }
+.btn-danger-outline:hover:not(:disabled) { border-color: var(--coral); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.social { display: flex; flex-direction: column; gap: 10px; }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--dim); font: 500 11px/1 var(--f-mono); text-transform: uppercase; letter-spacing: 0.1em; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.notice { padding: 11px 14px; border-radius: 10px; font-size: 13.5px; line-height: 1.5; border: 1px solid color-mix(in oklab, var(--nc) 45%, transparent); background: color-mix(in oklab, var(--nc) 11%, transparent); color: var(--fg); }
+.notice-error { --nc: var(--coral); }
+.notice-info { --nc: var(--accent); }
+.notice-success { --nc: var(--mint); }
+
+.toast { position: fixed; z-index: 20; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(460px, calc(100% - 32px)); box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.5); border-radius: 10px; background: var(--card); }
+
+/* ---------- Console account button ---------- */
+.user-btn { padding-left: 5px; text-decoration: none; color: var(--fg); }
+.user-av { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font: 600 10px/1 var(--f-mono); color: var(--accent); background: color-mix(in oklab, var(--accent) 15%, var(--card)); }
+
+/* ---------- Account page ---------- */
+.account { max-width: 980px; margin-inline: auto; }
+.account-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.account-bar .brand { text-decoration: none; color: var(--fg); }
+.account-bar .btn { text-decoration: none; color: var(--fg); }
+.account-main { display: flex; flex-direction: column; gap: 18px; padding-block: 28px; }
+.account-head h1 { margin: 6px 0 4px; font: 750 clamp(28px, 3vw, 38px)/1.05 var(--f-display); letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.account-head p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+
+.acct-section { display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); gap: 20px 40px; padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+.acct-danger { border-color: color-mix(in oklab, var(--coral) 35%, var(--line)); }
+.acct-intro h2 { margin: 0 0 6px; font: 700 17px/1.2 var(--f-display); }
+.acct-intro p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.acct-body { min-width: 0; }
+.acct-form { display: flex; flex-direction: column; gap: 14px; max-width: 440px; }
+.acct-form .btn-primary { align-self: flex-start; }
+.acct-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.acct-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.acct-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; font-size: 14px; }
+.acct-list li + li { border-top: 1px solid var(--line); }
+.acct-item { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.acct-item svg { width: 17px; height: 17px; flex: none; }
+.acct-device { flex-direction: column; align-items: flex-start; gap: 3px; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--f-mono); font-size: 12px; }
+.tag { display: inline-block; margin-left: 8px; padding: 3px 7px; border-radius: 999px; font: 500 9.5px/1 var(--f-mono); text-transform: uppercase; letter-spacing: 0.09em; vertical-align: 2px; color: var(--muted); background: color-mix(in oklab, var(--muted) 14%, transparent); }
+.tag-ok { color: var(--mint); background: color-mix(in oklab, var(--mint) 14%, transparent); }
+
+.boot { flex-direction: column; gap: 12px; text-align: center; }
+.boot a { color: var(--accent); }
+
+@media (max-width: 860px) {
+  .auth { grid-template-columns: minmax(0, 1fr); min-height: 0; border: 0; background: transparent; }
+  .auth-story { display: none; }
+  .auth-brand-compact { display: inline-flex; margin-bottom: 8px; }
+  .auth-main { padding: 24px 0; place-items: start center; }
+  .acct-section { grid-template-columns: minmax(0, 1fr); padding: 18px; }
+}

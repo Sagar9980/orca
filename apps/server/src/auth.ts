@@ -24,6 +24,9 @@ const socialProviders = {
     : {}),
 };
 
+export const enabledSocialProviders = Object.keys(socialProviders) as ("github" | "google")[];
+export const MIN_PASSWORD_LENGTH = 10;
+
 export const auth = betterAuth({
   appName: "Orca",
   baseURL: env.BETTER_AUTH_URL,
@@ -35,7 +38,7 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: true,
-    minPasswordLength: 10,
+    minPasswordLength: MIN_PASSWORD_LENGTH,
     resetPasswordTokenExpiresIn: 60 * 60,
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => deliver(mail.resetPassword(user, url)),
