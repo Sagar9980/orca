@@ -1,10 +1,12 @@
 import type { Run } from "@orca/shared";
 import { useNow } from "../lib/hooks";
-import { formatClock } from "../lib/labels";
+import { formatClock, initials } from "../lib/labels";
+import { Link } from "../router";
 import { OrcaMark, PauseIcon, PlayIcon, ThemeIcon } from "./icons";
 
 interface Props {
   run: Run;
+  user: { name: string; email: string };
   isDemo: boolean;
   onPause: () => void;
   onResume: () => void;
@@ -12,7 +14,7 @@ interface Props {
   onToggleTheme: () => void;
 }
 
-export function RunBar({ run, isDemo, onPause, onResume, onRestart, onToggleTheme }: Props) {
+export function RunBar({ run, user, isDemo, onPause, onResume, onRestart, onToggleTheme }: Props) {
   const finished = Boolean(run.finishedAt);
   const paused = run.status === "paused";
   const now = useNow(1000, !finished && !paused);
@@ -77,6 +79,10 @@ export function RunBar({ run, isDemo, onPause, onResume, onRestart, onToggleThem
           <ThemeIcon />
           Theme
         </button>
+        <Link to="/account" className="btn user-btn" aria-label={`Account settings for ${user.name || user.email}`}>
+          <span className="user-av">{initials(user.name || user.email)}</span>
+          <span className="user-name">{user.name.split(" ")[0] || "Account"}</span>
+        </Link>
       </div>
     </header>
   );
