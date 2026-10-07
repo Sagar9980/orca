@@ -64,8 +64,8 @@ export interface SubAgent {
   state: SubAgentState;
   /** The line it is working on right now. */
   activity: string;
-  /** Who it is blocked on while state is "waiting" or "needs_human". */
-  waitingOn?: ParticipantId;
+  /** Who it is blocked on while state is "waiting" or "needs_human". Null so it survives JSON. */
+  waitingOn: ParticipantId | null;
   tokens: number;
 }
 
