@@ -19,7 +19,6 @@ const PUBLIC: Record<string, ComponentType> = {
   "/goodbye": Goodbye,
 };
 
-/** "/", "/p/:slug" and "/p/:slug/r/:runId". */
 function shellRoute(path: string): ShellRoute | null {
   if (path === "/") return { view: "home" };
   const m = path.match(/^\/p\/([^/]+)(?:\/r\/([^/]+))?$/);
