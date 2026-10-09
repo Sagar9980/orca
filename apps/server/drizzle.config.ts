@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { defineConfig } from "drizzle-kit";
 
 // drizzle-kit doesn't read .env itself.
