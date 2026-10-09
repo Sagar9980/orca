@@ -19,9 +19,14 @@ function git(cwd: string, args: string[]): Promise<string | null> {
   });
 }
 
-/** "git@github.com:me/app.git" or "https://github.com/me/app" → "me/app". */
+/**
+ * "git@github.com:me/app.git" or "https://github.com/me/app" → "me/app".
+ * The host must be exactly github.com, so lookalikes like evilgithub.com don't match.
+ */
 export function githubRepoFromRemote(url: string | null): string | null {
-  const m = url?.match(/github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);
+  const m = url?.match(
+    /^(?:[a-z+]+:\/\/(?:[^@/]+@)?github\.com(?::\d+)?\/|[^@/:]+@github\.com:)([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i,
+  );
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
