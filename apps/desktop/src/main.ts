@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -10,11 +10,22 @@ const DEV_URL = process.env.ORCA_DEV_URL;
 /** Folders the user picked in the system dialog this session. Only these can be changed (git init). */
 const pickedFolders = new Set<string>();
 
-/** Only Orca's own page may use the bridge, never a page it navigated to. */
-function fromOrca(event: IpcMainInvokeEvent): boolean {
-  const url = event.senderFrame?.url ?? "";
+/** The windows Orca opened. createWindow keeps each one on Orca's page. */
+const orcaWindows = new WeakSet<WebContents>();
+
+function isOrcaUrl(url: string): boolean {
   if (DEV_URL) return url.startsWith(new URL(DEV_URL).origin + "/");
   return url.startsWith("file://");
+}
+
+/** Only Orca's own page may use the bridge: the top frame of an Orca window, never an iframe or another page. */
+function fromOrca(event: IpcMainInvokeEvent): boolean {
+  const frame = event.senderFrame;
+  return orcaWindows.has(event.sender) && !!frame && frame.parent === null && isOrcaUrl(frame.url);
+}
+
+function openInBrowser(url: string) {
+  if (/^https?:\/\//.test(url)) void shell.openExternal(url);
 }
 
 function guard<A extends unknown[], R>(handler: (event: IpcMainInvokeEvent, ...args: A) => Promise<R> | R) {
@@ -99,6 +110,20 @@ function createWindow() {
       sandbox: true,
       preload: path.join(__dirname, "preload.js"),
     },
+  });
+
+  orcaWindows.add(win.webContents);
+  // The bridge trusts whatever page this window shows, so it never leaves Orca's page
+  // (e.g. for a file dropped onto it). Web links open in the browser instead.
+  win.webContents.on("will-navigate", (event, url) => {
+    // In dev, social sign-in goes to the provider and back in this window; fromOrca still checks the origin.
+    if (DEV_URL && /^https?:\/\//.test(url)) return;
+    event.preventDefault();
+    openInBrowser(url);
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openInBrowser(url);
+    return { action: "deny" };
   });
 
   if (DEV_URL) {
