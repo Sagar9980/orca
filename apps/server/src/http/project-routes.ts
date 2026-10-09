@@ -109,6 +109,29 @@ async function freeSlug(userId: string, name: string): Promise<string> {
   for (let n = 2; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
 }
 
+/** The project already at this path on this machine, if any. */
+async function projectAtFolder(machineId: string, folderPath: string) {
+  const [row] = await db
+    .select({ slug: project.slug, name: project.name })
+    .from(projectFolder)
+    .innerJoin(project, eq(project.id, projectFolder.projectId))
+    .where(and(eq(projectFolder.machineId, machineId), eq(projectFolder.path, folderPath)));
+  return row;
+}
+
+const folderTaken = (reply: FastifyReply, existing: { slug: string; name: string }) =>
+  reply.status(409).send({
+    error: "exists",
+    message: `This folder is already the project ${existing.name}.`,
+    slug: existing.slug,
+  });
+
+/** The unique index an insert ran into (Postgres 23505), or null for any other error. Drizzle puts the pg error on `cause`. */
+function uniqueViolation(err: unknown): string | null {
+  const pg = ((err as { cause?: unknown })?.cause ?? err) as { code?: unknown; constraint?: unknown } | null;
+  return pg?.code === "23505" && typeof pg.constraint === "string" ? pg.constraint : null;
+}
+
 const toRunSummary = (r: typeof run.$inferSelect): RunSummary => ({
   id: r.id,
   projectId: r.projectId,
@@ -190,34 +213,39 @@ export async function projectRoutes(app: FastifyInstance) {
     // "/a/b/" and "/a/b" are the same folder.
     const folderPath = path.normalize(input.path).replace(/(?<=.)[\\/]+$/, "");
 
-    const [existing] = await db
-      .select({ slug: project.slug, name: project.name })
-      .from(projectFolder)
-      .innerJoin(project, eq(project.id, projectFolder.projectId))
-      .where(and(eq(projectFolder.machineId, machineId), eq(projectFolder.path, folderPath)));
-    if (existing) {
-      return reply.status(409).send({
-        error: "exists",
-        message: `This folder is already the project ${existing.name}.`,
-        slug: existing.slug,
-      });
-    }
+    const existing = await projectAtFolder(machineId, folderPath);
+    if (existing) return folderTaken(reply, existing);
 
     const id = newId();
-    const slug = await freeSlug(userId, input.name);
-    await db.transaction(async (tx) => {
-      await tx.insert(project).values({
-        id,
-        userId,
-        slug,
-        name: input.name,
-        source: "local",
-        defaultBranch: input.defaultBranch,
-        githubRepo: input.githubRepo ?? null,
-        lastOpenedAt: new Date(),
-      });
-      await tx.insert(projectFolder).values({ projectId: id, machineId, path: folderPath });
-    });
+    // A request made at the same moment can take the folder or the slug between the checks and the insert;
+    // the unique indexes catch that, and we answer as if the checks had seen it.
+    for (let attempt = 1; ; attempt++) {
+      const slug = await freeSlug(userId, input.name);
+      try {
+        await db.transaction(async (tx) => {
+          await tx.insert(project).values({
+            id,
+            userId,
+            slug,
+            name: input.name,
+            source: "local",
+            defaultBranch: input.defaultBranch,
+            githubRepo: input.githubRepo ?? null,
+            lastOpenedAt: new Date(),
+          });
+          await tx.insert(projectFolder).values({ projectId: id, machineId, path: folderPath });
+        });
+        break;
+      } catch (err) {
+        const index = uniqueViolation(err);
+        if (index === "project_folder_machine_path_uq") {
+          const taken = await projectAtFolder(machineId, folderPath);
+          if (taken) return folderTaken(reply, taken);
+        }
+        if (index === "project_user_slug_uq" && attempt < 3) continue;
+        throw err;
+      }
+    }
 
     const created = (await listProjects(userId, machineId)).find((p) => p.id === id);
     return reply.status(201).send({ project: created });
