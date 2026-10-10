@@ -27,19 +27,30 @@ export function useProjects(): State {
 }
 
 let inflight: Promise<void> | null = null;
+/** Bumped by resetProjects, so a refresh that was already running can't write its results afterwards. */
+let generation = 0;
 
 export function refreshProjects(): Promise<void> {
-  inflight ??= api<{ projects: Project[] }>("/api/projects")
-    .then(({ projects }) => set({ projects, loaded: true, error: null }))
-    .catch((err: Error) => set({ loaded: true, error: err.message }))
+  if (inflight) return inflight;
+  const gen = generation;
+  const request: Promise<void> = api<{ projects: Project[] }>("/api/projects")
+    .then(({ projects }) => {
+      if (gen === generation) set({ projects, loaded: true, error: null });
+    })
+    .catch((err: Error) => {
+      if (gen === generation) set({ loaded: true, error: err.message });
+    })
     .finally(() => {
-      inflight = null;
+      if (inflight === request) inflight = null;
     });
-  return inflight;
+  inflight = request;
+  return request;
 }
 
 /** Forget everything, e.g. after sign-out, so the next user never sees the last one's projects. */
 export function resetProjects() {
+  generation++;
+  inflight = null;
   set({ projects: [], loaded: false, error: null });
 }
 
