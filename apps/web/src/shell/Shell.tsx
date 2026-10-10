@@ -44,10 +44,13 @@ export function Shell({ route, user, onToggleTheme }: Props) {
   const [pinned, setPinned] = useState(() => readPref(PIN_KEY) === "1");
   const [toast, setToast] = useState<{ id: number; text: string; tone: Tone } | null>(null);
   const [gitAsk, setGitAsk] = useState<{ folder: FolderInfo; answer: (ok: boolean) => void } | null>(null);
+  // Resolves addFolder's pending git question; answered "no" if Shell unmounts (e.g. sign-out) while it's open.
+  const gitAnswer = useRef<((ok: boolean) => void) | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { query } = useLocation();
 
   useEffect(() => void refreshProjects(), []);
+  useEffect(() => () => gitAnswer.current?.(false), []);
 
   const showToast = useCallback((text: string, tone: Tone = "success") => {
     clearTimeout(toastTimer.current);
@@ -98,7 +101,11 @@ export function Shell({ route, user, onToggleTheme }: Props) {
 
     if (!folder.isGit) {
       const picked = folder;
-      const ok = await new Promise<boolean>((answer) => setGitAsk({ folder: picked, answer }));
+      const ok = await new Promise<boolean>((answer) => {
+        gitAnswer.current = answer;
+        setGitAsk({ folder: picked, answer });
+      });
+      gitAnswer.current = null;
       setGitAsk(null);
       if (!ok) return null;
       try {
