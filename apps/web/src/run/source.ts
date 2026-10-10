@@ -8,4 +8,6 @@ export interface RunSource {
   /** Starts delivering events. New subscribers first receive the run so far. */
   subscribe(listener: (event: RunEvent) => void): () => void;
   send(command: ClientCommand): void;
+  /** Stops any work the source does on its own (timers, scripted agents). */
+  close?(): void;
 }

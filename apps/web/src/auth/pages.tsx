@@ -33,11 +33,18 @@ export function SignIn() {
     setBusy(true);
     setError(null);
     setUnverified(false);
-    const { error } = await authClient.signIn.email({ email, password, callbackURL: VERIFIED_URL() });
+    // No callbackURL here: on success Better Auth's client would redirect to it, reloading the page.
+    const { error } = await authClient.signIn.email({ email, password });
+    if (!error) {
+      setBusy(false);
+      return navigate("/", { replace: true });
+    }
+    if (error.code === "EMAIL_NOT_VERIFIED") {
+      // Only reached with the right password, so this resends to the account's real owner.
+      await authClient.sendVerificationEmail({ email, callbackURL: VERIFIED_URL() });
+      setUnverified(true);
+    } else setError(describeError(error));
     setBusy(false);
-    if (!error) return navigate("/", { replace: true });
-    if (error.code === "EMAIL_NOT_VERIFIED") setUnverified(true);
-    else setError(describeError(error));
   };
 
   return (
