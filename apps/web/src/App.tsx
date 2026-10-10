@@ -23,8 +23,12 @@ function shellRoute(path: string): ShellRoute | null {
   if (path === "/") return { view: "home" };
   const m = path.match(/^\/p\/([^/]+)(?:\/r\/([^/]+))?$/);
   if (!m) return null;
-  const slug = decodeURIComponent(m[1]!);
-  return m[2] ? { view: "run", slug, runId: decodeURIComponent(m[2]) } : { view: "project", slug };
+  try {
+    const slug = decodeURIComponent(m[1]!);
+    return m[2] ? { view: "run", slug, runId: decodeURIComponent(m[2]) } : { view: "project", slug };
+  } catch {
+    return null;
+  }
 }
 
 export function App() {
