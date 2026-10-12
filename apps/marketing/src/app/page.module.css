@@ -4,7 +4,7 @@
   margin: 0 auto;
   padding: 28px clamp(16px, 4vw, 56px);
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
 }
 
 .top { display: flex; align-items: center; gap: 10px; font-family: var(--f-display); font-weight: 700; font-size: 21px; letter-spacing: -0.02em; }

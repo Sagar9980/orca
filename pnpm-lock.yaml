@@ -41,6 +41,9 @@ importers:
       react-dom:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
+      resend:
+        specifier: ^6.32.1
+        version: 6.32.1
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

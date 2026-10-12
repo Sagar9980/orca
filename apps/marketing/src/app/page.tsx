@@ -1,3 +1,4 @@
+import { InterestForm } from "./InterestForm";
 import styles from "./page.module.css";
 
 // The sonar: Orca in the middle sends work out to agents around it, one after another.
@@ -130,6 +131,8 @@ export default function Home() {
           </svg>
         </div>
       </main>
+
+      <InterestForm />
 
       <footer className={styles.foot}>© 2026 Orca</footer>
     </div>
