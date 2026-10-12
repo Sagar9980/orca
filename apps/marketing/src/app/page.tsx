@@ -28,14 +28,24 @@ const CHAT: [who: "you" | "orca", text: string][] = [
   ["orca", "On it. I'll check back if I need your Stripe login."],
 ];
 
-function Mark({ size = 26 }: { size?: number }) {
+/** The Orca mark: a fin over a wave. Same drawing as OrcaMark in apps/web/src/components/icons.tsx. */
+function Mark(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <circle cx="16" cy="16" r="4.2" fill="currentColor" />
-      <path d="M16 6.5a9.5 9.5 0 0 1 9.5 9.5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
-      <path d="M16 25.5A9.5 9.5 0 0 1 6.5 16" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
-      <path d="M16 1.5A14.5 14.5 0 0 1 30.5 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity=".45" />
-      <path d="M16 30.5A14.5 14.5 0 0 1 1.5 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity=".45" />
+    <svg width={26} height={26} {...props} viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <path
+        d="M3 21.5c6.5-.6 10.6-6.6 12.4-18.3 1.7 1 2.9 3 2.9 6.4 0 6.2 2.6 9.9 6.7 11.9"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2 25.2c3-1.4 5.4-1.4 8 0s5 1.4 8 0 5.2-1.4 8 0"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity=".55"
+      />
     </svg>
   );
 }
@@ -116,11 +126,7 @@ export default function Home() {
             ))}
 
             <circle className={styles.core} cx={C} cy={C} r={40} />
-            <svg x={C - 18} y={C - 18} width="36" height="36" viewBox="0 0 32 32" className={styles.coreMark}>
-              <circle cx="16" cy="16" r="4.2" fill="currentColor" />
-              <path d="M16 6.5a9.5 9.5 0 0 1 9.5 9.5" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" fill="none" />
-              <path d="M16 25.5A9.5 9.5 0 0 1 6.5 16" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" fill="none" />
-            </svg>
+            <Mark x={C - 17} y={C - 19} width={34} height={34} className={styles.coreMark} />
           </svg>
         </div>
       </main>
