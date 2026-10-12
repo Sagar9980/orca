@@ -1,0 +1,48 @@
+/* Same palette as the Orca app (apps/web/src/index.css). Dark first; light follows the OS. */
+:root {
+  --bg: #08131c;
+  --panel: #0c1b27;
+  --card: #102230;
+  --line: #1b3345;
+  --line-2: #2a4a5f;
+  --fg: #e2edf3;
+  --muted: #88a2b4;
+  --dim: #5a7487;
+  --accent: #62d6ee;
+  --mint: #72e0b0;
+  --glow: rgba(98, 214, 238, 0.16);
+  --f-display: var(--font-display), "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: var(--font-body), "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --f-mono: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #e9f0f4;
+    --panel: #f4f8fa;
+    --card: #ffffff;
+    --line: #d3e0e8;
+    --line-2: #b3c8d4;
+    --fg: #0b2130;
+    --muted: #4d6879;
+    --dim: #86a0b0;
+    --accent: #0a87a3;
+    --mint: #16865a;
+    --glow: rgba(10, 135, 163, 0.14);
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background:
+    radial-gradient(ellipse 80% 60% at 75% 40%, var(--glow), transparent 70%),
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--line-2) 55%, transparent) 1px, transparent 0) 0 0 / 28px 28px,
+    var(--bg);
+  color: var(--fg);
+  font-family: var(--f-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
