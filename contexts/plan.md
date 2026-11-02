@@ -1,142 +1,185 @@
-# Plan: Real agents in Orca
-
-Replace the scripted demo with real Claude workers, built on the **Claude Agent SDK**.
-
-**Split of work:** the Agent SDK is the workers (they read, edit, run and test code). Orca is the manager (it plans, picks
-the workers, passes work between them, asks the human, and tracks cost).
-
----
+# Plan: Orca's own agent engine--
 
 ## 1. Decisions
 
-| Question | Decision | Why |
-|---|---|---|
-| Who does the coding? | Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) | Ready-made coding agent with file, shell and search tools, subagents, permissions, hooks and budgets. TypeScript, like the repo. |
-| Who decides what happens next? | Orca's own code, the **orchestrator** | That decision-making is Orca's product. Keeping it in our code keeps it visible, pausable and within budget. |
-| Where do agents run? | **Desktop app, Electron main process** | The project folders are on the user's computer, and the desktop app already connects them. |
-| Who pays for Claude? | **The user's own Anthropic API key** at first | No billing to build yet. A hosted "Orca pays" option can come later. The Agent SDK does not allow Claude Pro/Max login. |
-| Where does the key live? | OS keychain via Electron `safeStorage` | Never sent to our server, never in the database, prompts or logs. |
-| Models | Orchestrator and main agents: `claude-opus-5-5`. Helper subagents: `sonnet`, or `haiku` for reading-heavy work | Planning needs the strongest model; bulk work can be cheaper. |
-| How the UI gets updates | Same `RunEvent`s as today, through a new `RunSource` | The UI, reducer and components stay as they are. Only the source of events changes. |
+| Question                   | Decision                                                                                                                         | Why                                                                                                                   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Agent framework            | `@langchain/langgraph`, `@langchain/anthropic`, `@langchain/core`, `langchain` (TypeScript)                                      | Same language as the repo. Graphs, checkpoints, `interrupt()`, streaming, and `Send` for starting workers at runtime. |
+| Who writes the loop?       | Us, as a `StateGraph`. No `createAgent` to begin with                                                                            | The loop is what we want to learn and control.                                                                        |
+| Fixed or dynamic workflow? | Fixed outer graph (analyze → plan → execute → verify → report); the number and type of workers is decided at runtime with `Send` | Orca designs the workflow per task. The graph is only the frame around it.                                            |
+| Where the code lives       | New `packages/engine`: plain Node, no Electron                                                                                   | Runs from the terminal now, inside the desktop app next, and on a server later.                                       |
+| Where agents run           | Desktop app, Electron main process, once the engine works from the terminal                                                      | The project folders are on the user's computer.                                                                       |
+| Who pays for Claude?       | The user's own Anthropic API key at first                                                                                        | No billing to build yet.                                                                                              |
+| Where does the key live?   | OS keychain via Electron `safeStorage`. In development, an environment variable                                                  | Never sent to our server, never in the database, prompts, logs or checkpoints.                                        |
+| Models                     | `claude-opus-5-5` for planning and main agents; try `claude-sonnet-5-5` or `claude-haiku-5-5` for simple workers                 | Measure cost per finished task before moving work to cheaper models.                                                  |
+| How the UI gets updates    | Same `RunEvent`s as today, through a new `RunSource`                                                                             | The UI and reducer stay as they are. Node code emits events with `config.writer`, read with stream mode `custom`.     |
+| Saved state                | LangGraph checkpointer: `MemorySaver` first, then SQLite on the user's computer                                                  | Checkpoints contain the user's code, so they stay local by default.                                                   |
 
 ---
 
-## 2. How a run works
+## 2. The loops
+
+Agent engineering here is three loops inside each other. Each has its own stop rule.
 
 ```
-User types an idea in the Composer
-        │
-        ▼
-Orchestrator (desktop main process)
-  1. Analyze  - one Claude call reads the repo summary and the idea
-  2. Plan     - Claude returns JSON: steps, which agents, acceptance criteria, questions for the human
-  3. Ask      - if there are questions, emit human.requested and wait
-  4. Spawn    - start an Agent SDK session per main agent (Builder, Tester, ...)
-  5. Execute  - stream each session's messages and convert them to RunEvents
-  6. Verify   - Tester / Reviewer sessions check the work against the acceptance criteria
-  7. Decide   - all criteria pass: Report. Otherwise send failures back to the Builder and loop (max N times)
-  8. Report   - emit run.finished with a summary and what the human still has to do
-        │
-        ▼
-RunEvents → IPC → web UI (Board, AgentRail, Comms, HumanCard)
+Outer loop (orchestrator graph, one per run)
+  analyze → plan → ask human → start workers → verify → done? → report
+                                    ▲                     │ no
+                                    └── send failures back┘   stop: criteria pass, or retry / budget limit
+
+  Worker loop (one per agent)
+    call model → tool calls? → gate → run tools → call model ...
+                     │ no                                     stop: no tool calls, or turn / budget limit
+                     └──> report
+
+    Tool safety (one per tool call)
+      check the policy → allow / deny / ask the human         stop: never skip this step
+```
+
+**Worker graph:**
+
+```
+START → model ──(has tool calls)──> gate ──> tools ──> model
+          │                          │
+          └──(finished)──> END       └──(denied)──> model, with the reason as the tool result
 ```
 
 **Mapping to our model (`packages/shared/src/model.ts`):**
 
-| Orca concept | Agent SDK piece |
-|---|---|
-| `Run` | One orchestrator loop |
-| `Agent` (Builder, Tester...) | One `query()` session |
-| `SubAgent` | A subagent defined in that session's `agents` option |
-| `Message` | Streamed SDK messages (assistant text, tool calls, subagent results) |
-| `HumanRequest` (approval) | `canUseTool` callback pauses and waits for the human |
-| `HumanRequest` (decision / information) | The orchestrator's plan questions, or a custom `ask_human` tool through an SDK MCP server |
-| `Budget` | `maxBudgetUsd` per session, plus a run total kept by the orchestrator |
-| Pause / stop | `interrupt()` / `abortController` |
+| Orca concept                 | LangGraph piece                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------- |
+| `Run`                        | One orchestrator graph run; its `thread_id` is the run id                                |
+| `Agent` (Builder, Tester...) | A worker subgraph, started with `Send`                                                   |
+| `SubAgent`                   | A smaller worker started by a tool the agent calls, or a nested subgraph                 |
+| `Message`                    | Model and tool messages, turned into `message.sent` events                               |
+| `HumanRequest`               | `interrupt()` pauses; `new Command({ resume })` continues                                |
+| `RunEvent`                   | Emitted by nodes with `config.writer`                                                    |
+| `Budget`                     | Token usage from each model response, added up in graph state                            |
+| Pause                        | Stop after the current node, then continue from the checkpoint with the same `thread_id` |
 
 ---
 
 ## 3. Phases
 
-Each phase ends with something we can see working.
+Each phase ends with something we can see working. Everything up to Phase D runs from the terminal.
 
-### Phase A: One real worker (spike)
-Goal: prove the SDK works on a real folder and see what it streams.
+### Phase A: The worker loop by hand
 
-- [ ] Add `@anthropic-ai/claude-agent-sdk` to `apps/desktop`.
-- [ ] A throwaway script: run one `query()` on a test folder with a small task, print every message.
-- [ ] Note the message shapes (assistant, tool use, subagent, result with cost) to design the event mapping.
+- [ ] Create `packages/engine` and add the LangChain and LangGraph packages.
+- [ ] A small test project with bugs and failing tests. The engine works on a temporary copy of it.
+- [ ] Write the tools: `read_file`, `list_files`, `search`, `edit_file`, `run_command`. All paths must stay inside the
+      project folder.
+- [ ] Write the worker `StateGraph`: `model` node, `tools` node, and a conditional edge that loops or ends.
+- [ ] Print every step in the terminal.
+- [ ] Check the risks in section 5 against the real API.
 
-**Done when:** we watch Claude read, edit and test code in a folder from our own script.
+**Done when:** our own loop fixes the test project's bugs and its tests pass.
 
-### Phase B: API key and bridge
-- [ ] Settings screen: paste an Anthropic API key, store it with `safeStorage`, show only "key saved ✓".
-- [ ] New IPC calls in `apps/desktop/src/preload.ts`: `run.start`, `run.command` (pause, resume, respond), and an
-      event channel from main to the page. Same `fromOrca` guard as today.
-- [ ] `DesktopRunSource` in `apps/web/src/run/` that implements `RunSource` over that IPC.
+### Phase B: Human gate and limits
 
-**Done when:** the web app can start a run in the desktop app and receive events.
+- [ ] One `gate` node that **every** tool call passes through, before the `tools` node. Tools have no other way to run.
+- [ ] Policy: allow reads, ask for commands and anything outside the normal edit flow, deny dangerous commands.
+- [ ] `interrupt()` for "ask", and a terminal y/n to resume. Add `MemorySaver`.
+- [ ] Turn limit, retry limit, and a dollar budget from the token usage in each response.
 
-### Phase C: One agent, live in the UI
-- [ ] `apps/desktop/src/agents/session.ts`: wraps one `query()` and converts SDK messages to `RunEvent`s
-      (`agent.spawned`, `subagent.updated`, `message.sent`, `run.spend`...).
-- [ ] The Builder runs on the project folder **in its own git worktree / branch** (`run.branch`), never directly on the
-      user's working copy.
-- [ ] `canUseTool` sends risky actions (deploy, delete, network installs, editing `.env`) to the human as
-      `human.requested` and waits for `human.responded`.
-- [ ] `maxBudgetUsd` and `maxTurns` on every session.
+**Done when:** no command can run without passing the gate, and a run stops cleanly at its budget.
 
-**Done when:** typing an idea runs a real Builder and the existing UI shows it live, with approvals working.
+### Phase C: Better worker loop
 
-### Phase D: The orchestrator
-- [ ] `apps/desktop/src/orchestrator/`: the loop from section 2.
-- [ ] Plan call: Claude API with structured JSON output (steps, agents, acceptance criteria, questions, recommended
-      defaults).
-- [ ] Agent roster as config: Builder, Tester, Reviewer first. Each has a mission prompt, tools, model and subagents.
-- [ ] Handoffs: Builder → Tester → (failures) → Builder, with a retry limit.
-- [ ] Run-level budget: stop everything when the total reaches the limit.
+- [ ] Context management: big tool results, long runs, summarizing, prompt caching.
+- [ ] Recovery: tool errors go back to the model, API errors retry, and the loop notices when it is stuck.
+- [ ] Work in a git worktree / branch, never on uncommitted user work.
+- [ ] A small eval set: 5–10 test tasks that report pass rate, cost and turns, so changes are measured.
 
-**Done when:** a one-line idea produces a plan, a Builder and a Tester, a fix loop, and a final report, without any
-second prompt from the user.
+**Done when:** a real change to a real small repo works, and the eval numbers show whether a change helped.
 
-### Phase E: Saving and resuming
-- [ ] Send every `RunEvent` to the server (`apps/server`) and store it in Postgres; add a `run_event` table.
-- [ ] Reopening a run replays its events, which the reducer already supports.
-- [ ] Resume an interrupted run with the SDK's `resume` session IDs.
+### Phase D: Live in the UI
 
-### Phase F: More agents and tools
-- [ ] UI Tester with a browser (Playwright MCP server).
-- [ ] Security Reviewer, Fault Tolerance, Integrator.
-- [ ] Secrets handling for third-party keys (keychain, injected as env vars, never shown to the model).
+- [ ] Settings screen for the API key, stored with `safeStorage`.
+- [ ] Run the engine in the desktop app. IPC calls for `run.start` and `run.command`, plus an event channel. Same
+      `fromOrca` guard as today.
+- [ ] Turn node output into `RunEvent`s. `DesktopRunSource` in `apps/web/src/run/` implements `RunSource`.
+- [ ] Interrupts appear as `HumanCard`s, and the answer resumes the graph.
+
+**Done when:** typing an idea runs a real agent and the existing UI shows it live, with approvals working.
+
+### Phase E: The orchestrator
+
+- [ ] Analyze and plan nodes: structured output with steps, agents, acceptance criteria and questions.
+- [ ] Agent roster as config: Builder, Tester, Reviewer first.
+- [ ] `Send` starts workers from the plan. Reducers merge their results.
+- [ ] Verify against the acceptance criteria, send failures back to the Builder, stop at the retry limit.
+- [ ] Run-level budget across all workers.
+
+**Done when:** a one-line idea produces a plan, a Builder and a Tester, a fix loop and a report, with no second prompt.
+
+### Phase F: Scale
+
+- [ ] Parallel workers on separate worktrees, and merging their results.
+- [ ] Sub-agents inside a main agent.
+- [ ] SQLite checkpointer: reopen and resume a run after a crash.
+- [ ] Send `RunEvent`s to the server and add a `run_event` table for run history.
+- [ ] Docker sandbox for running code.
+
+### Phase G: More agents
+
+- [ ] UI Tester with Playwright, Security Reviewer, Fault Tolerance, Integrator.
+- [ ] Third-party secrets: keychain, injected as env vars, never shown to the model.
+- [ ] Project, user and outcome memory.
 
 ---
 
-## 4. Safety rules (from README §9)
+## 4. Safety rules
 
+We own all the tools, so nothing here is provided for us.
+
+- **One gate, no bypass.** Every tool call goes through the gate node. Enforce rules there, not in the prompt.
+- Paths are checked after resolving symlinks, and must stay inside the project folder.
+- `run_command` gets a timeout, an output limit, and an environment with no API keys or other secrets.
 - Agents work in a **git worktree / branch**, never on uncommitted user work.
-- Every run has a **budget cap** and a **turn cap**; the orchestrator has a retry cap.
-- Destructive or costly actions always go to the human (`canUseTool` + `disallowedTools` such as `Bash(rm -rf *)`).
+- Every worker has a turn cap, a budget cap and a retry cap, and so does the run.
+- Destructive or costly actions always go to the human.
 - Every tool call is logged as an event (audit log).
-- The API key and other secrets never go into prompts, logs or our server.
+- File contents, command output and web pages are data, never instructions (prompt injection).
+- Code that runs before `interrupt()` runs again on resume, so the gate node has no side effects before it pauses.
+- Don't wrap `interrupt()` in a bare try/catch, because it pauses by throwing.
 
 ---
 
-## 5. Open questions
+## 5. Risks to check in Phase A
 
-1. **Folder safety:** is a git worktree enough, or do we need a Docker sandbox for running the user's code?
-2. **Where the orchestrator lives long-term:** desktop only, or move it to the server for the hosted version (then
-   Managed Agents with a self-hosted worker is the likely path)?
-3. **Parallel agents:** can Builder and Tester run at the same time on separate worktrees, and who merges?
-4. **Judging "done":** how good are Claude's own acceptance criteria? We need a small set of test tasks (evals) to
-   measure it.
-5. **Cost per run:** what is a typical "add a feature" run going to cost? Measure in Phase C.
+These come from how `claude-opus-5-5` behaves. Test each with `@langchain/anthropic`, since the wrapper may not handle
+them yet.
+
+1. **Forced tools:** `tool_choice` `any` or a named tool returns a 400. `withStructuredOutput` may force a tool, so check
+   which method works.
+2. **Thinking blocks:** they must go back unchanged, in order. Any history editing or trimming (including summarizing)
+   can cause a 400 on accounts created on or after 2026-08-31. Check that LangChain's message conversion keeps them.
+3. **Thinking settings:** thinking can't be turned off, and sending `budget_tokens` or sampling settings returns a 400.
+   Default effort is `medium`, so set it on purpose.
+4. **Refusals:** check `stop_reason: "refusal"` and handle it. Plan for server-side fallbacks.
+5. **Streaming and long outputs:** use streaming for large `max_tokens`.
+6. **Prompt caching:** confirm cache hits, since caching is the biggest cost saver in a long loop.
+
+If the wrapper blocks one of these, call the `@anthropic-ai/sdk` directly inside the `model` node. LangGraph doesn't care
+how a node gets its answer.
 
 ---
 
-## 6. Not doing yet
+## 6. Open questions
+
+1. **Sandbox:** is a git worktree enough for early testing, or do we need Docker sooner? Commands from a worktree can
+   still reach the rest of the computer.
+2. **Sub-agents:** a nested subgraph or a tool that starts a worker? Try both in Phase F.
+3. **Parallel edits:** who merges separate worktrees, and what happens on a conflict?
+4. **Judging "done":** how good are the model's own acceptance criteria? Measure with the evals.
+5. **Cost per run:** measure from Phase A onward.
+6. **Long-term home:** desktop only, or also the server for a hosted version? `packages/engine` keeps both possible.
+
+---
+
+## 7. Not doing yet
 
 - Hosted / cloud runs and "Orca pays" billing.
-- Memory across runs (project, user and outcome memory).
+- LangSmith or LangGraph Platform; printed logs and our own events come first.
 - Non-technical "zero menu" mode.
-- LangGraph or other frameworks; plain TypeScript first, a durable workflow engine (Temporal / Inngest) only if
-  resuming runs gets hard.

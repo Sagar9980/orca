@@ -4,8 +4,6 @@
 
 You give Orca an idea. Orca figures out what needs to happen, spawns the right agents, decides the next step on its own, and only comes back to you when it needs something only a human can provide (a choice, a credential, an approval).
 
-> Status: idea / planning stage. No stack chosen yet. This document captures the vision and plan before any code is written.
-
 ---
 
 ## 1. The Problem
@@ -72,16 +70,16 @@ A top-level agent that:
 
 The orchestrator chooses which to spawn based on the task. Initial roster:
 
-| Agent | Responsibility |
-|---|---|
-| **Builder** | Writes the implementation code. |
-| **Tester** | Writes and runs unit and integration tests. |
-| **UI Tester** | Drives a real browser, clicks through flows, checks visuals and behavior. |
-| **Fault Tolerance** | Probes failure modes: retries, timeouts, idempotency, webhook replays, partial failures, network drops. |
-| **Threshold / Limits** | Checks rate limits, load, quotas, size limits, concurrency, cost ceilings. |
-| **Security Reviewer** | Secrets handling, auth, input validation, dependency risk. |
-| **Integrator** | Handles third-party setup: API keys, dashboards, webhooks, env config. |
-| **Reviewer** | Final pass on quality, consistency with the codebase, and completeness against acceptance criteria. |
+| Agent                  | Responsibility                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Builder**            | Writes the implementation code.                                                                         |
+| **Tester**             | Writes and runs unit and integration tests.                                                             |
+| **UI Tester**          | Drives a real browser, clicks through flows, checks visuals and behavior.                               |
+| **Fault Tolerance**    | Probes failure modes: retries, timeouts, idempotency, webhook replays, partial failures, network drops. |
+| **Threshold / Limits** | Checks rate limits, load, quotas, size limits, concurrency, cost ceilings.                              |
+| **Security Reviewer**  | Secrets handling, auth, input validation, dependency risk.                                              |
+| **Integrator**         | Handles third-party setup: API keys, dashboards, webhooks, env config.                                  |
+| **Reviewer**           | Final pass on quality, consistency with the codebase, and completeness against acceptance criteria.     |
 
 The roster is extensible. The orchestrator can propose a new agent type when a task needs one (e.g. a "Migration" agent, an "SEO" agent, a "Compliance" agent).
 
@@ -135,14 +133,14 @@ Questions are batched, short, and answerable in one tap where possible.
 
 ## 7. What Makes Orca Different
 
-| Typical orchestration platforms | Orca |
-|---|---|
-| Human designs the workflow or graph | Orca designs the workflow from the idea |
-| Human writes prompts for each agent | Orca writes all internal prompts |
-| Human decides the next step | Orca detects the next step |
-| Presents options to the human | Picks the best option, asks only if truly needed |
-| Testing is something you add | Testing, fault tolerance, and limits are default agents |
-| Fails silently or stops | Fails, diagnoses, retries, learns |
+| Typical orchestration platforms     | Orca                                                    |
+| ----------------------------------- | ------------------------------------------------------- |
+| Human designs the workflow or graph | Orca designs the workflow from the idea                 |
+| Human writes prompts for each agent | Orca writes all internal prompts                        |
+| Human decides the next step         | Orca detects the next step                              |
+| Presents options to the human       | Picks the best option, asks only if truly needed        |
+| Testing is something you add        | Testing, fault tolerance, and limits are default agents |
+| Fails silently or stops             | Fails, diagnoses, retries, learns                       |
 
 ## 8. Non-Goals (for now)
 
@@ -165,33 +163,39 @@ Questions are batched, short, and answerable in one tap where possible.
 ## 10. Roadmap
 
 ### Phase 0: Plan (current)
+
 - [x] Capture the vision in this README.
 - [ ] Decide the tech stack.
 - [ ] Define the agent interface and the orchestrator loop on paper.
 
 ### Phase 1: Core loop (MVP)
+
 - Orchestrator that takes an idea, analyzes a local repo, and produces a plan.
 - Spawns Builder and Tester agents; runs in a sandbox.
 - Human-in-the-loop gate (decisions and approvals) via CLI.
 - Run log and a simple view of agent activity.
 
 ### Phase 2: Verification agents
+
 - UI Tester with real browser automation.
 - Fault Tolerance and Threshold agents.
 - Security Reviewer.
 - Automatic fix-and-retry loop.
 
 ### Phase 3: Integrations
+
 - Integrator agent: browser-driven third-party setup with a credential handoff.
 - Secrets vault.
 - First end-to-end showcase: "Add Stripe payments" with no step-by-step prompting.
 
 ### Phase 4: Memory and learning
+
 - Project, user, and outcome memory.
 - Opinionated default selection that improves from past runs.
 - Failure analysis feeding back into planning.
 
 ### Phase 5: Non-technical experience
+
 - Plain-language UI for people who don't code.
 - Zero-menu mode: Orca decides, explains in one line, and proceeds.
 - Hosted version, teams, and sharing.
