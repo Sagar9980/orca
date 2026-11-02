@@ -8,7 +8,7 @@ agents, verifies the result, and only asks the human for decisions, credentials 
 
 Plans and decisions live in `contexts/`. Read them before starting work on agents or the orchestrator.
 
-- Real agents plan (Claude Agent SDK, orchestrator, phases): @contexts/plan.md
+- Agent engine plan (LangGraph, our own loops, orchestrator, phases): @contexts/plan.md
 
 ## Repo layout
 
