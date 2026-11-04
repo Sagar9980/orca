@@ -15,6 +15,11 @@
 | How the UI gets updates    | Same `RunEvent`s as today, through a new `RunSource`                                                                             | The UI and reducer stay as they are. Node code emits events with `config.writer`, read with stream mode `custom`.     |
 | Saved state                | LangGraph checkpointer: `MemorySaver` first, then SQLite on the user's computer                                                  | Checkpoints contain the user's code, so they stay local by default.                                                   |
 
+**While developing**, the engine defaults to `claude-haiku-5-5` with a $0.25 budget per run, about 30x cheaper than Opus
+($0.0017 vs $0.054 for the test project). Use `--model claude-opus-5-5` for real tasks and occasional quality checks.
+Test engine logic against a fake client first; real API calls are the last check. Set a monthly spend limit in the
+Anthropic Console as a hard cap.
+
 ---
 
 ## 2. The loops
@@ -65,30 +70,30 @@ Each phase ends with something we can see working. Everything up to Phase D runs
 
 ### Phase A: The worker loop by hand
 
-- [ ] Create `packages/engine` and add the LangChain and LangGraph packages.
-- [ ] A small test project with bugs and failing tests. The engine works on a temporary copy of it.
-- [ ] Write the tools: `read_file`, `list_files`, `search`, `edit_file`, `run_command`. All paths must stay inside the
+- [x] Create `packages/engine` and add the LangChain and LangGraph packages.
+- [x] A small test project with bugs and failing tests. The engine works on a temporary copy of it.
+- [x] Write the tools: `read_file`, `list_files`, `search`, `edit_file`, `run_command`. All paths must stay inside the
       project folder.
-- [ ] Write the worker `StateGraph`: `model` node, `tools` node, and a conditional edge that loops or ends.
-- [ ] Print every step in the terminal.
+- [x] Write the worker `StateGraph`: `model` node, `tools` node, and a conditional edge that loops or ends.
+- [x] Print every step in the terminal.
 - [ ] Check the risks in section 5 against the real API.
 
 **Done when:** our own loop fixes the test project's bugs and its tests pass.
 
 ### Phase B: Human gate and limits
 
-- [ ] One `gate` node that **every** tool call passes through, before the `tools` node. Tools have no other way to run.
-- [ ] Policy: allow reads, ask for commands and anything outside the normal edit flow, deny dangerous commands.
-- [ ] `interrupt()` for "ask", and a terminal y/n to resume. Add `MemorySaver`.
-- [ ] Turn limit, retry limit, and a dollar budget from the token usage in each response.
+- [x] One `gate` node that **every** tool call passes through, before the `tools` node. Tools have no other way to run.
+- [x] Policy: allow reads, ask for commands and anything outside the normal edit flow, deny dangerous commands.
+- [x] `interrupt()` for "ask", and a terminal y/n to resume. Add `MemorySaver`.
+- [x] Turn limit, retry limit, and a dollar budget from the token usage in each response.
 
 **Done when:** no command can run without passing the gate, and a run stops cleanly at its budget.
 
 ### Phase C: Better worker loop
 
 - [ ] Context management: big tool results, long runs, summarizing, prompt caching.
-- [ ] Recovery: tool errors go back to the model, API errors retry, and the loop notices when it is stuck.
-- [ ] Work in a git worktree / branch, never on uncommitted user work.
+- [x] Recovery: tool errors go back to the model, API errors retry, and the loop notices when it is stuck.
+- [x] Work in a git worktree / branch, never on uncommitted user work.
 - [ ] A small eval set: 5–10 test tasks that report pass rate, cost and turns, so changes are measured.
 
 **Done when:** a real change to a real small repo works, and the eval numbers show whether a change helped.
