@@ -131,7 +131,7 @@ const handlers: { [K in ToolName]: (root: string, input: z.infer<(typeof schemas
 
   run_command(root, { command }) {
     return new Promise((resolve) => {
-      const child = spawn("sh", ["-c", command], { cwd: root, env: safeEnv(), timeout: COMMAND_TIMEOUT_MS });
+      const child = spawn("bash", ["-c", command], { cwd: root, env: safeEnv(), timeout: COMMAND_TIMEOUT_MS });
       let output = "";
       const collect = (chunk: Buffer) => {
         if (output.length < MAX_OUTPUT_CHARS) output += chunk.toString("utf8");

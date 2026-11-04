@@ -77,10 +77,10 @@ Each phase ends with something we can see working. Everything up to Phase D runs
 
 ### Phase B: Human gate and limits
 
-- [ ] One `gate` node that **every** tool call passes through, before the `tools` node. Tools have no other way to run.
-- [ ] Policy: allow reads, ask for commands and anything outside the normal edit flow, deny dangerous commands.
-- [ ] `interrupt()` for "ask", and a terminal y/n to resume. Add `MemorySaver`.
-- [ ] Turn limit, retry limit, and a dollar budget from the token usage in each response.
+- [x] One `gate` node that **every** tool call passes through, before the `tools` node. Tools have no other way to run.
+- [x] Policy: allow reads, ask for commands and anything outside the normal edit flow, deny dangerous commands.
+- [x] `interrupt()` for "ask", and a terminal y/n to resume. Add `MemorySaver`.
+- [x] Turn limit, retry limit, and a dollar budget from the token usage in each response.
 
 **Done when:** no command can run without passing the gate, and a run stops cleanly at its budget.
 
