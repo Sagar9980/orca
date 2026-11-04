@@ -100,6 +100,10 @@ export function buildWorker({
 }: WorkerOptions) {
   // Throws for a model without known prices, since its budget couldn't be enforced.
   const { fallbacks } = modelInfo(model);
+  // NaN or a negative cap would make the limit checks below never fire, so the run would ignore its limits.
+  if (!Number.isFinite(maxUsd) || maxUsd <= 0) throw new Error(`maxUsd must be a positive number, got ${maxUsd}`);
+  if (!Number.isInteger(maxTurns) || maxTurns <= 0)
+    throw new Error(`maxTurns must be a positive integer, got ${maxTurns}`);
 
   async function callModel(state: WorkerStateType, config: LangGraphRunnableConfig) {
     const stream = client.beta.messages.stream({

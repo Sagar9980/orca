@@ -31,6 +31,16 @@ const model = values.model;
 const maxUsd = Number(values.budget);
 const maxTurns = Number(values.turns);
 
+// A NaN budget or turn cap makes every limit check false, so the run would ignore it. Refuse before anything starts.
+if (!Number.isFinite(maxUsd) || maxUsd <= 0) {
+  console.error(`--budget must be a positive number of US dollars, such as 0.25 (got "${values.budget}").`);
+  process.exit(1);
+}
+if (!Number.isInteger(maxTurns) || maxTurns <= 0) {
+  console.error(`--turns must be a positive whole number, such as 30 (got "${values.turns}").`);
+  process.exit(1);
+}
+
 if (!process.env.ANTHROPIC_API_KEY) {
   console.error("Set ANTHROPIC_API_KEY in packages/engine/.env (see .env.example).");
   process.exit(1);
