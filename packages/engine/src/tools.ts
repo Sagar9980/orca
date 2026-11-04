@@ -37,7 +37,7 @@ const descriptions: Record<ToolName, string> = {
   search: "Search project files for a regular expression. Returns file:line: text for each match.",
   edit_file:
     "Replace one exact occurrence of old_string with new_string in a file. With an empty old_string, creates the file.",
-  run_command: "Run a shell command in the project root, e.g. the test suite. 60 second timeout.",
+  run_command: "Run a shell command in the project root, e.g. the test suite. 60 second timeout. Background processes are stopped when the command ends.",
 };
 
 export const toolDefinitions: Anthropic.Beta.BetaTool[] = (Object.keys(schemas) as ToolName[]).map((name) => ({
@@ -131,19 +131,41 @@ const handlers: { [K in ToolName]: (root: string, input: z.infer<(typeof schemas
 
   run_command(root, { command }) {
     return new Promise((resolve) => {
-      const child = spawn("bash", ["-c", command], { cwd: root, env: safeEnv(), timeout: COMMAND_TIMEOUT_MS });
+      // Its own process group, so bash and everything it starts can be killed together. Node's `timeout` signals
+      // only bash, and anything left running keeps the output pipes open, so "close" would never fire.
+      const child = spawn("bash", ["-c", command], { cwd: root, env: safeEnv(), detached: true });
+      const group = child.pid;
+      if (group) trackGroup(group);
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        if (group) killGroup(group);
+      }, COMMAND_TIMEOUT_MS);
+
       let output = "";
       const collect = (chunk: Buffer) => {
         if (output.length < MAX_OUTPUT_CHARS) output += chunk.toString("utf8");
       };
       child.stdout.on("data", collect);
       child.stderr.on("data", collect);
+      // Background processes (a dev server, a watcher) don't outlive the command; otherwise the call never returns.
+      child.on("exit", () => group && killGroup(group));
       child.on("close", (code, signal) => {
+        clearTimeout(timer);
+        if (group) untrackGroup(group);
         const cut = output.length >= MAX_OUTPUT_CHARS ? "\n[output truncated]" : "";
-        const status = signal ? `killed by ${signal}` : `exit code ${code}`;
+        const status = timedOut
+          ? `killed after the ${COMMAND_TIMEOUT_MS / 1000} second timeout`
+          : signal
+            ? `killed by ${signal}`
+            : `exit code ${code}`;
         resolve(`${output.slice(0, MAX_OUTPUT_CHARS)}${cut}\n[${status}]`);
       });
-      child.on("error", (err) => resolve(`Failed to start: ${err.message}`));
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        if (group) untrackGroup(group);
+        resolve(`Failed to start: ${err.message}`);
+      });
     });
   },
 };
@@ -174,6 +196,47 @@ async function insideRoot(root: string, rel: string): Promise<string> {
 }
 
 /** Only what commands need to run. API keys and other secrets never reach the agent's shell. */
+/** Process groups of commands still running. A detached group doesn't get the terminal's Ctrl-C, so we pass it on. */
+const runningGroups = new Set<number>();
+const EXIT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+
+function killGroup(group: number) {
+  try {
+    process.kill(-group, "SIGKILL");
+  } catch {
+    // ESRCH: the group has already exited.
+  }
+}
+
+function killAllGroups() {
+  for (const group of runningGroups) killGroup(group);
+}
+
+/** Kills the group, then exits the way the signal would have; listeners exist only while a command runs. */
+function onExitSignal(signal: NodeJS.Signals) {
+  killAllGroups();
+  stopListening();
+  process.kill(process.pid, signal);
+}
+
+function stopListening() {
+  for (const s of EXIT_SIGNALS) process.off(s, onExitSignal);
+  process.off("exit", killAllGroups);
+}
+
+function trackGroup(group: number) {
+  if (runningGroups.size === 0) {
+    for (const s of EXIT_SIGNALS) process.on(s, onExitSignal);
+    process.on("exit", killAllGroups);
+  }
+  runningGroups.add(group);
+}
+
+function untrackGroup(group: number) {
+  runningGroups.delete(group);
+  if (runningGroups.size === 0) stopListening();
+}
+
 function safeEnv(): NodeJS.ProcessEnv {
   const keep = ["PATH", "HOME", "LANG", "TERM", "TMPDIR", "SHELL", "USER"];
   return Object.fromEntries(keep.filter((k) => process.env[k]).map((k) => [k, process.env[k]]));
