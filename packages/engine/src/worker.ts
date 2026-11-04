@@ -20,7 +20,7 @@ import { runTool, toolDefinitions } from "./tools.js";
 export type { Usage };
 
 /** Why the worker stopped on its own, before the model finished. */
-export type Limit = "turns" | "budget";
+export type Limit = "turns" | "budget" | "stuck";
 
 /** What nodes emit through `config.writer`. Read with stream mode "custom"; later turned into `RunEvent`s. */
 export type WorkerEvent =
@@ -28,7 +28,9 @@ export type WorkerEvent =
   | { kind: "gate"; id: string; name: string; input: unknown; verdict: "allow" | "deny"; reason: string }
   | { kind: "tool_result"; id: string; name: string; content: string; isError: boolean }
   | { kind: "turn"; turn: number; stopReason: string | null; usage: Usage; spentUsd: number }
-  | { kind: "limit"; limit: Limit; detail: string };
+  | { kind: "limit"; limit: Limit; detail: string }
+  /** The model itself stopped early: a refusal, or its output was cut off. */
+  | { kind: "stopped"; stopReason: string; detail: string };
 
 /** The `interrupt()` value when the gate needs a human. */
 export interface ApprovalRequest {
@@ -50,6 +52,10 @@ const WorkerState = Annotation.Root({
   turns: Annotation<number>({ reducer: (a, b) => a + b, default: () => 0 }),
   stopReason: Annotation<string | null>({ reducer: (_, b) => b, default: () => null }),
   limit: Annotation<Limit | null>({ reducer: (_, b) => b, default: () => null }),
+  /** Tool rounds in a row where every call failed or was denied. */
+  failedRounds: Annotation<number>({ reducer: (_, b) => b, default: () => 0 }),
+  /** The tool calls of the last few turns, to notice the model repeating itself. */
+  recentCalls: Annotation<string[]>({ reducer: (_, b) => b, default: () => [] }),
   /** The gate's answer for each pending tool call id. Replaced on every gate pass; tools run only what is here. */
   approvals: Annotation<Record<string, Approval>>({ reducer: (_, b) => b, default: () => ({}) }),
 });
@@ -67,6 +73,10 @@ export interface WorkerOptions {
   maxUsd?: number;
   /** How many times an API call is retried on 429, 5xx and connection errors. Ignored when `client` is passed. */
   maxRetries?: number;
+  /** Stop after this many tool rounds in a row where every call failed or was denied. */
+  maxFailedRounds?: number;
+  /** Stop when the model makes exactly the same tool calls this many turns in a row. */
+  maxRepeats?: number;
   /** Keeps state between `interrupt()` and resume. Pass `thread_id` in the config when invoking. */
   checkpointer?: BaseCheckpointSaver;
 }
@@ -83,6 +93,8 @@ export function buildWorker({
   maxTurns = 30,
   maxUsd = 0.25,
   maxRetries = 2,
+  maxFailedRounds = 3,
+  maxRepeats = 3,
   client = new Anthropic({ maxRetries }),
   checkpointer = new MemorySaver(),
 }: WorkerOptions) {
@@ -116,17 +128,32 @@ export function buildWorker({
     const spentUsd = state.spentUsd + costOfTurn;
     config.writer?.({ kind: "turn", turn, stopReason: message.stop_reason, usage, spentUsd } satisfies WorkerEvent);
 
+    if (message.stop_reason === "refusal") {
+      const why = message.stop_details?.explanation ?? message.stop_details?.category ?? "no reason given";
+      config.writer?.({
+        kind: "stopped",
+        stopReason: "refusal",
+        detail: `The model declined: ${why}`,
+      } satisfies WorkerEvent);
+    } else if (message.stop_reason === "max_tokens") {
+      const detail = "The response hit max_tokens and was cut off, so its tool calls were not run.";
+      config.writer?.({ kind: "stopped", stopReason: "max_tokens", detail } satisfies WorkerEvent);
+    }
+
+    const calls = message.content.filter((b) => b.type === "tool_use");
+    const signature = JSON.stringify(calls.map((c) => [c.name, c.input]));
+    const recentCalls = [...state.recentCalls, signature].slice(-maxRepeats);
+
     // Checked after each response, so a run overshoots its budget by at most one response.
-    let limit: Limit | null = null;
+    let stop: { limit: Limit; detail: string } | null = null;
     if (message.stop_reason === "tool_use") {
-      if (spentUsd >= maxUsd) limit = "budget";
-      else if (turn >= maxTurns) limit = "turns";
+      if (spentUsd >= maxUsd) stop = { limit: "budget", detail: `spent $${spentUsd.toFixed(4)} of $${maxUsd} budget` };
+      else if (turn >= maxTurns) stop = { limit: "turns", detail: `reached ${maxTurns} turns` };
+      else if (recentCalls.length === maxRepeats && recentCalls.every((s) => s === signature)) {
+        stop = { limit: "stuck", detail: `made the same tool calls ${maxRepeats} turns in a row` };
+      }
     }
-    if (limit) {
-      const detail =
-        limit === "budget" ? `spent $${spentUsd.toFixed(4)} of $${maxUsd} budget` : `reached ${maxTurns} turns`;
-      config.writer?.({ kind: "limit", limit, detail } satisfies WorkerEvent);
-    }
+    if (stop) config.writer?.({ kind: "limit", ...stop } satisfies WorkerEvent);
 
     // The whole content goes back as is: thinking blocks must stay unchanged and in order.
     return {
@@ -135,7 +162,8 @@ export function buildWorker({
       spentUsd: costOfTurn,
       turns: 1,
       stopReason: message.stop_reason,
-      limit,
+      limit: stop?.limit ?? null,
+      recentCalls,
     };
   }
 
@@ -185,14 +213,26 @@ export function buildWorker({
       config.writer?.({ kind: "tool_result", id: call.id, name: call.name, ...result } satisfies WorkerEvent);
       results.push({ type: "tool_result", tool_use_id: call.id, content: result.content, is_error: result.isError });
     }
+    // Errors go back to the model so it can recover, but a run where nothing works stops instead of looping.
+    const failedRounds = results.every((r) => r.is_error) ? state.failedRounds + 1 : 0;
+    let limit: Limit | null = null;
+    if (failedRounds >= maxFailedRounds) {
+      limit = "stuck";
+      const detail = `every tool call failed or was denied ${failedRounds} rounds in a row`;
+      config.writer?.({ kind: "limit", limit, detail } satisfies WorkerEvent);
+    }
     // All results go back in one user message, so the model keeps making parallel calls.
-    return { messages: [{ role: "user" as const, content: results }], approvals: {} };
+    return { messages: [{ role: "user" as const, content: results }], approvals: {}, failedRounds, limit };
   }
 
   function next(state: WorkerStateType) {
     // A refusal or max_tokens can cut a tool call off mid-input, so its tools never run.
     if (state.stopReason !== "tool_use" || state.limit) return END;
     return toolCalls(state.messages[state.messages.length - 1]).length ? "gate" : END;
+  }
+
+  function afterTools(state: WorkerStateType) {
+    return state.limit ? END : "model";
   }
 
   return new StateGraph(WorkerState)
@@ -202,7 +242,7 @@ export function buildWorker({
     .addEdge(START, "model")
     .addConditionalEdges("model", next, ["gate", END])
     .addEdge("gate", "tools")
-    .addEdge("tools", "model")
+    .addConditionalEdges("tools", afterTools, ["model", END])
     .compile({ checkpointer });
 }
 

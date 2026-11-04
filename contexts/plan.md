@@ -92,8 +92,8 @@ Each phase ends with something we can see working. Everything up to Phase D runs
 ### Phase C: Better worker loop
 
 - [ ] Context management: big tool results, long runs, summarizing, prompt caching.
-- [ ] Recovery: tool errors go back to the model, API errors retry, and the loop notices when it is stuck.
-- [ ] Work in a git worktree / branch, never on uncommitted user work.
+- [x] Recovery: tool errors go back to the model, API errors retry, and the loop notices when it is stuck.
+- [x] Work in a git worktree / branch, never on uncommitted user work.
 - [ ] A small eval set: 5–10 test tasks that report pass rate, cost and turns, so changes are measured.
 
 **Done when:** a real change to a real small repo works, and the eval numbers show whether a change helped.

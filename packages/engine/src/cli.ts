@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import Anthropic from "@anthropic-ai/sdk";
 import { Command } from "@langchain/langgraph";
 import { DEFAULT_MODEL } from "./models.js";
 import { buildWorker, type ApprovalAnswer, type ApprovalRequest, type WorkerEvent } from "./worker.js";
+import { closeWorkspace, fixtureRepo, openWorkspace } from "./workspace.js";
 
-// Run one worker on a temporary copy of a project, print every step, and ask y/n when the gate needs a human.
+// Run one worker on its own branch of a project, print every step, and ask y/n when the gate needs a human.
+// The project must be in a git repo; with no project given, it runs on the built-in test project.
 // Usage: pnpm --filter @orca/engine fix [project folder] [task] [--model claude-opus-5-5] [--budget 0.25] [--turns 30]
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -35,34 +36,60 @@ if (!process.env.ANTHROPIC_API_KEY) {
   process.exit(1);
 }
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "orca-run-"));
-await fs.cp(source, root, { recursive: true, filter: (p) => !p.includes(`${path.sep}node_modules`) });
-console.log(`Working on a copy of ${source}\n  in ${root}\n  ${model}, budget $${maxUsd}, up to ${maxTurns} turns\n`);
+// The built-in test project isn't a repo of its own, so it gets a throwaway one and runs like a real project.
+const project = positionals[0] ? source : await fixtureRepo(source);
+const runId = randomUUID().slice(0, 8);
+const ws = await openWorkspace(project, runId);
+console.log(`Working on branch ${ws.branch} of ${ws.repo}\n  in ${ws.root}`);
+console.log(`  ${model}, budget $${maxUsd}, up to ${maxTurns} turns\n`);
+if (ws.dirty)
+  console.log("  Note: the repo has uncommitted changes. They stay untouched and aren't part of this run.\n");
 
-const worker = buildWorker({ root, model, maxTurns, maxUsd });
-const thread = { configurable: { thread_id: randomUUID() } };
+const worker = buildWorker({ root: ws.root, model, maxTurns, maxUsd });
+const thread = { configurable: { thread_id: runId } };
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
 // Each pass runs until the graph finishes or pauses at the gate; a pause is answered here and resumed.
-let input: Parameters<typeof worker.stream>[0] = { messages: [{ role: "user", content: task }] };
-while (true) {
-  const stream = await worker.stream(input, { ...thread, streamMode: "custom", recursionLimit: maxTurns * 3 + 5 });
-  for await (const event of stream) print(event as WorkerEvent);
+let summary = "Stopped: crashed";
+try {
+  let input: Parameters<typeof worker.stream>[0] = { messages: [{ role: "user", content: task }] };
+  while (true) {
+    const stream = await worker.stream(input, { ...thread, streamMode: "custom", recursionLimit: maxTurns * 3 + 5 });
+    for await (const event of stream) print(event as WorkerEvent);
 
-  const snapshot = await worker.getState(thread);
-  const pending = snapshot.tasks.flatMap((t) => t.interrupts);
-  if (!pending.length) break;
-  input = new Command({ resume: await askHuman(pending[0].value as ApprovalRequest) });
+    const snapshot = await worker.getState(thread);
+    const pending = snapshot.tasks.flatMap((t) => t.interrupts);
+    if (!pending.length) break;
+    input = new Command({ resume: await askHuman(pending[0].value as ApprovalRequest) });
+  }
+
+  const { usage, turns, stopReason, limit, spentUsd } = (await worker.getState(thread)).values;
+  summary = `Stopped: ${limit ? `${limit} limit` : stopReason} after ${turns} turns, $${spentUsd.toFixed(4)} on ${model}`;
+  console.log(`\n\n${summary}`);
+  console.log(
+    `Tokens: ${usage.input} in, ${usage.cacheRead} cache read, ${usage.cacheWrite} cache write, ${usage.output} out`,
+  );
+} catch (err) {
+  // Retryable API errors (429, 5xx, network) were already retried by the SDK; what reaches here won't fix itself.
+  if (!(err instanceof Anthropic.APIError)) throw err;
+  summary = `Stopped: API error ${err.status ?? ""}`.trim();
+  if (err instanceof Anthropic.AuthenticationError)
+    console.error("\n\nThe API key was rejected. Check packages/engine/.env.");
+  else if (err instanceof Anthropic.RateLimitError)
+    console.error("\n\nStill rate limited after retries. Try again later.");
+  else console.error(`\n\nThe API returned an error: ${err.message}`);
+  process.exitCode = 1;
+} finally {
+  rl.close();
+  // Even a crashed or stopped run keeps its changes on the branch, so nothing the agent did is lost.
+  const firstLine = `Orca: ${task.split("\n")[0]}`.slice(0, 72);
+  const { committed } = await closeWorkspace(ws, `${firstLine}\n\n${summary}`);
+  console.log(
+    committed
+      ? `Changes are on branch ${ws.branch}. Review with:\n  git -C "${ws.repo}" diff HEAD...${ws.branch}`
+      : "No changes, so no branch was kept.",
+  );
 }
-rl.close();
-
-const { usage, turns, stopReason, limit, spentUsd } = (await worker.getState(thread)).values;
-console.log(`\n\nStopped: ${limit ? `${limit} limit` : stopReason} after ${turns} turns`);
-console.log(
-  `Tokens: ${usage.input} in, ${usage.cacheRead} cache read, ${usage.cacheWrite} cache write, ${usage.output} out`,
-);
-console.log(`Cost: $${spentUsd.toFixed(4)}`);
-console.log(`Result is in ${root}`);
 
 async function askHuman(request: ApprovalRequest): Promise<ApprovalAnswer> {
   const answers: ApprovalAnswer = {};
@@ -98,6 +125,9 @@ function print(event: WorkerEvent) {
       break;
     case "limit":
       console.log(`\n■ Stopping: ${event.detail}`);
+      break;
+    case "stopped":
+      console.log(`\n■ ${event.detail}`);
       break;
   }
 }
