@@ -65,12 +65,12 @@ Each phase ends with something we can see working. Everything up to Phase D runs
 
 ### Phase A: The worker loop by hand
 
-- [ ] Create `packages/engine` and add the LangChain and LangGraph packages.
-- [ ] A small test project with bugs and failing tests. The engine works on a temporary copy of it.
-- [ ] Write the tools: `read_file`, `list_files`, `search`, `edit_file`, `run_command`. All paths must stay inside the
+- [x] Create `packages/engine` and add the LangChain and LangGraph packages.
+- [x] A small test project with bugs and failing tests. The engine works on a temporary copy of it.
+- [x] Write the tools: `read_file`, `list_files`, `search`, `edit_file`, `run_command`. All paths must stay inside the
       project folder.
-- [ ] Write the worker `StateGraph`: `model` node, `tools` node, and a conditional edge that loops or ends.
-- [ ] Print every step in the terminal.
+- [x] Write the worker `StateGraph`: `model` node, `tools` node, and a conditional edge that loops or ends.
+- [x] Print every step in the terminal.
 - [ ] Check the risks in section 5 against the real API.
 
 **Done when:** our own loop fixes the test project's bugs and its tests pass.

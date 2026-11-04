@@ -16,6 +16,8 @@ pnpm monorepo, TypeScript everywhere.
 
 - `packages/shared`: run model, `RunEvent`s and the reducer that rebuilds a run from events. Build it before the apps
   use it (`pnpm build:shared`).
+- `packages/engine`: the agent engine (LangGraph worker loop + tools). Plain Node; run it on the test project with
+  `pnpm --filter @orca/engine fix`. Needs `ANTHROPIC_API_KEY` in `packages/engine/.env`.
 - `apps/web`: React + Vite UI. Runs currently come from a scripted demo (`src/run/demoSource.ts`) behind the
   `RunSource` interface.
 - `apps/server`: Fastify + Drizzle/Postgres + Better Auth. Projects, machines, project folders, runs.
