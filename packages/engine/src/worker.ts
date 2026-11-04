@@ -9,6 +9,7 @@ import {
   type BaseCheckpointSaver,
   type LangGraphRunnableConfig,
 } from "@langchain/langgraph";
+import { costUsd, DEFAULT_MODEL, modelInfo, type Usage } from "./models.js";
 import { decide, type Decision } from "./policy.js";
 import { runTool, toolDefinitions } from "./tools.js";
 
@@ -16,7 +17,7 @@ import { runTool, toolDefinitions } from "./tools.js";
 // The model node calls @anthropic-ai/sdk directly instead of @langchain/anthropic, so thinking blocks go back
 // unchanged, refusals can fall back server side, and effort / caching are set exactly (plan.md, section 5).
 
-export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number };
+export type { Usage };
 
 /** Why the worker stopped on its own, before the model finished. */
 export type Limit = "turns" | "budget";
@@ -45,6 +46,7 @@ const WorkerState = Annotation.Root({
     reducer: (a, b) => addUsage(a, b),
     default: () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }),
   }),
+  spentUsd: Annotation<number>({ reducer: (a, b) => a + b, default: () => 0 }),
   turns: Annotation<number>({ reducer: (a, b) => a + b, default: () => 0 }),
   stopReason: Annotation<string | null>({ reducer: (_, b) => b, default: () => null }),
   limit: Annotation<Limit | null>({ reducer: (_, b) => b, default: () => null }),
@@ -58,6 +60,7 @@ export interface WorkerOptions {
   /** Project folder the tools are confined to. */
   root: string;
   client?: Anthropic;
+  /** One of `MODELS` in models.ts. Defaults to Haiku while developing. */
   model?: string;
   maxTurns?: number;
   /** Stop once the run has spent this much, in US dollars. */
@@ -76,13 +79,16 @@ When you are done, reply with a short summary of what you changed.`;
 
 export function buildWorker({
   root,
-  model = "claude-opus-5-5",
+  model = DEFAULT_MODEL,
   maxTurns = 30,
-  maxUsd = 1,
+  maxUsd = 0.25,
   maxRetries = 2,
   client = new Anthropic({ maxRetries }),
   checkpointer = new MemorySaver(),
 }: WorkerOptions) {
+  // Throws for a model without known prices, since its budget couldn't be enforced.
+  const { fallbacks } = modelInfo(model);
+
   async function callModel(state: WorkerStateType, config: LangGraphRunnableConfig) {
     const stream = client.beta.messages.stream({
       model,
@@ -93,8 +99,8 @@ export function buildWorker({
       thinking: { type: "adaptive" },
       output_config: { effort: "high" },
       cache_control: { type: "ephemeral" },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
+      // Haiku has no server-side refusal fallback; sending the setting there is an error.
+      ...(fallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
     });
     stream.on("text", (text) => config.writer?.({ kind: "text", text } satisfies WorkerEvent));
     const message = await stream.finalMessage();
@@ -106,7 +112,8 @@ export function buildWorker({
       cacheWrite: message.usage.cache_creation_input_tokens ?? 0,
     };
     const turn = state.turns + 1;
-    const spentUsd = costUsd(addUsage(state.usage, usage));
+    const costOfTurn = costUsd(model, usage);
+    const spentUsd = state.spentUsd + costOfTurn;
     config.writer?.({ kind: "turn", turn, stopReason: message.stop_reason, usage, spentUsd } satisfies WorkerEvent);
 
     // Checked after each response, so a run overshoots its budget by at most one response.
@@ -125,6 +132,7 @@ export function buildWorker({
     return {
       messages: [{ role: "assistant" as const, content: message.content }],
       usage,
+      spentUsd: costOfTurn,
       turns: 1,
       stopReason: message.stop_reason,
       limit,
@@ -210,9 +218,4 @@ function addUsage(a: Usage, b: Usage): Usage {
     cacheRead: a.cacheRead + b.cacheRead,
     cacheWrite: a.cacheWrite + b.cacheWrite,
   };
-}
-
-/** Claude Opus 5.5 list prices per million tokens. Cache writes are 1.25x input. */
-export function costUsd(usage: Usage): number {
-  return (usage.input * 4 + usage.cacheWrite * 5 + usage.cacheRead * 0.2 + usage.output * 20) / 1_000_000;
 }

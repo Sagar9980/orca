@@ -15,6 +15,11 @@
 | How the UI gets updates    | Same `RunEvent`s as today, through a new `RunSource`                                                                             | The UI and reducer stay as they are. Node code emits events with `config.writer`, read with stream mode `custom`.     |
 | Saved state                | LangGraph checkpointer: `MemorySaver` first, then SQLite on the user's computer                                                  | Checkpoints contain the user's code, so they stay local by default.                                                   |
 
+**While developing**, the engine defaults to `claude-haiku-5-5` with a $0.25 budget per run, about 30x cheaper than Opus
+($0.0017 vs $0.054 for the test project). Use `--model claude-opus-5-5` for real tasks and occasional quality checks.
+Test engine logic against a fake client first; real API calls are the last check. Set a monthly spend limit in the
+Anthropic Console as a hard cap.
+
 ---
 
 ## 2. The loops

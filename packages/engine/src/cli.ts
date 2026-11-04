@@ -6,10 +6,11 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { Command } from "@langchain/langgraph";
-import { buildWorker, costUsd, type ApprovalAnswer, type ApprovalRequest, type WorkerEvent } from "./worker.js";
+import { DEFAULT_MODEL } from "./models.js";
+import { buildWorker, type ApprovalAnswer, type ApprovalRequest, type WorkerEvent } from "./worker.js";
 
 // Run one worker on a temporary copy of a project, print every step, and ask y/n when the gate needs a human.
-// Usage: pnpm --filter @orca/engine fix [project folder] [task] [--budget 0.50] [--turns 30]
+// Usage: pnpm --filter @orca/engine fix [project folder] [task] [--model claude-opus-5-5] [--budget 0.25] [--turns 30]
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // pnpm passes a literal "--" through to the script, which would turn every flag after it into a positional.
@@ -17,10 +18,15 @@ const argv = process.argv.slice(2).filter((arg, i) => !(i === 0 && arg === "--")
 const { positionals, values } = parseArgs({
   args: argv,
   allowPositionals: true,
-  options: { budget: { type: "string", default: "1" }, turns: { type: "string", default: "30" } },
+  options: {
+    model: { type: "string", default: DEFAULT_MODEL },
+    budget: { type: "string", default: "0.25" },
+    turns: { type: "string", default: "30" },
+  },
 });
 const source = path.resolve(positionals[0] ?? path.join(here, "../fixtures/buggy-project"));
 const task = positionals[1] ?? "The tests fail. Fix the bugs so `npm test` passes.";
+const model = values.model;
 const maxUsd = Number(values.budget);
 const maxTurns = Number(values.turns);
 
@@ -31,9 +37,9 @@ if (!process.env.ANTHROPIC_API_KEY) {
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "orca-run-"));
 await fs.cp(source, root, { recursive: true, filter: (p) => !p.includes(`${path.sep}node_modules`) });
-console.log(`Working on a copy of ${source}\n  in ${root}\n  budget $${maxUsd}, up to ${maxTurns} turns\n`);
+console.log(`Working on a copy of ${source}\n  in ${root}\n  ${model}, budget $${maxUsd}, up to ${maxTurns} turns\n`);
 
-const worker = buildWorker({ root, maxTurns, maxUsd });
+const worker = buildWorker({ root, model, maxTurns, maxUsd });
 const thread = { configurable: { thread_id: randomUUID() } };
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -50,12 +56,12 @@ while (true) {
 }
 rl.close();
 
-const { usage, turns, stopReason, limit } = (await worker.getState(thread)).values;
+const { usage, turns, stopReason, limit, spentUsd } = (await worker.getState(thread)).values;
 console.log(`\n\nStopped: ${limit ? `${limit} limit` : stopReason} after ${turns} turns`);
 console.log(
   `Tokens: ${usage.input} in, ${usage.cacheRead} cache read, ${usage.cacheWrite} cache write, ${usage.output} out`,
 );
-console.log(`Cost: $${costUsd(usage).toFixed(4)}`);
+console.log(`Cost: $${spentUsd.toFixed(4)}`);
 console.log(`Result is in ${root}`);
 
 async function askHuman(request: ApprovalRequest): Promise<ApprovalAnswer> {
