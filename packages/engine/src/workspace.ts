@@ -21,6 +21,8 @@ export interface Workspace {
   /** The user's repository. */
   repo: string;
   branch: string;
+  /** The commit the branch started from. The run changed something if the branch has moved past it. */
+  base: string;
   worktree: string;
   /** Where the agent works: the worktree, or the same subfolder in it when the project is part of a bigger repo. */
   root: string;
@@ -33,29 +35,32 @@ export async function openWorkspace(project: string, runId: string): Promise<Wor
   const repo = await git(realProject, "rev-parse", "--show-toplevel").catch(() => {
     throw new Error(`${project} is not in a git repository. Orca works on a branch, so run \`git init\` first.`);
   });
-  await git(repo, "rev-parse", "--verify", "HEAD").catch(() => {
+  const base = await git(repo, "rev-parse", "--verify", "HEAD").catch(() => {
     throw new Error(`${repo} has no commits yet. Commit once so Orca has something to branch from.`);
   });
 
   const dirty = (await git(repo, "status", "--porcelain")) !== "";
   const branch = `orca/run-${runId}`;
   const worktree = path.join(os.tmpdir(), "orca-worktrees", `${path.basename(repo)}-${runId}`);
-  await git(repo, "worktree", "add", "-q", "-b", branch, worktree, "HEAD");
-  return { repo, branch, worktree, root: path.join(worktree, path.relative(repo, realProject)), dirty };
+  await git(repo, "worktree", "add", "-q", "-b", branch, worktree, base);
+  return { repo, branch, base, worktree, root: path.join(worktree, path.relative(repo, realProject)), dirty };
 }
 
 /**
  * Commits whatever the agent changed to the run's branch and removes the worktree; the branch stays for review.
- * A run that changed nothing leaves no branch behind.
+ * A run that changed nothing leaves no branch behind. `committed` is true when the branch holds any commits past
+ * its base: Orca's commit here, or ones the agent made itself with `git commit`.
  */
 export async function closeWorkspace(ws: Workspace, message: string): Promise<{ committed: boolean }> {
   await git(ws.worktree, "add", "-A");
-  const committed = (await git(ws.worktree, "status", "--porcelain")) !== "";
-  if (committed) await git(ws.worktree, ...ORCA_COMMIT, "commit", "-q", "--no-verify", "-m", message);
+  if ((await git(ws.worktree, "status", "--porcelain")) !== "") {
+    await git(ws.worktree, ...ORCA_COMMIT, "commit", "-q", "--no-verify", "-m", message);
+  }
   // --force only drops ignored files such as node_modules; everything tracked is committed above.
   await git(ws.repo, "worktree", "remove", "--force", ws.worktree);
-  if (!committed) await git(ws.repo, "branch", "-D", ws.branch);
-  return { committed };
+  const ahead = Number(await git(ws.repo, "rev-list", "--count", `${ws.base}..${ws.branch}`));
+  if (!ahead) await git(ws.repo, "branch", "-D", ws.branch);
+  return { committed: ahead > 0 };
 }
 
 /** Copies a test project to a temporary folder and makes it a git repo with one commit, so it runs like a real one. */
