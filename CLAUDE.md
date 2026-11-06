@@ -20,7 +20,10 @@ pnpm monorepo, TypeScript everywhere.
   `pnpm --filter @orca/engine fix` (`--model`, `--budget 0.25`, `--turns 30`); it asks y/n before commands and works
   on its own `orca/run-*` branch in a git worktree. Defaults to `claude-haiku-5-5` to keep testing cheap. Needs
   `ANTHROPIC_API_KEY` in `packages/engine/.env`.
-- `apps/web`: React + Vite UI. Runs come through the `RunSource` interface: `src/run/desktopSource.ts` for real runs
+- `apps/web`: React + Vite UI, styled with Tailwind v4 and shadcn/ui conventions. Colors are tokens in
+  `src/index.css` (`bg-panel`, `text-muted-foreground`, `border-border-strong`, status `tone-*` classes); shared parts
+  are in `src/components/ui` (`Button`, `Input`, `Badge`), built with `cva` and `cn()`. Use tokens, not hex colors.
+  `components.json` lets `pnpm dlx shadcn@latest add <name>` add shadcn components. Runs come through the `RunSource` interface: `src/run/desktopSource.ts` for real runs
   in the desktop app when the project's folder is on this computer, else the scripted demo (`src/run/demoSource.ts`).
 - `apps/server`: Fastify + Drizzle/Postgres + Better Auth. Projects, machines, project folders, runs.
 - `apps/desktop`: Electron. Picks local folders and runs the engine in the main process (`src/runs.ts`); the page
