@@ -18,7 +18,8 @@ const DENIED_COMMANDS: [RegExp, string][] = [
   [/\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b/, "pipes a download into a shell"],
   [/\bgit\s+push\b/, "pushes to a remote"],
   [/\bgit\s+(reset\s+--hard|clean\s+-\w*f)/, "throws away work"],
-  [/\b(mkfs|dd\s+if=|shutdown|reboot)\b/, "touches the system"],
+  // `dd if=` sits outside the \b group: there is no word boundary after "=", so it never matched there.
+  [/\b(mkfs|shutdown|reboot)\b|\bdd\s+if=/, "touches the system"],
   [/:\(\)\s*\{/, "fork bomb"],
   [/\bchmod\s+(-R\s+)?[0-7]*7{2}\b/, "makes files world-writable"],
   [/(^|[\s'"=])(~|\$HOME)(\/|\s|$)|\.\.\//, "reaches outside the project"],

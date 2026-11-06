@@ -20,17 +20,24 @@ pnpm monorepo, TypeScript everywhere.
   `pnpm --filter @orca/engine fix` (`--model`, `--budget 0.25`, `--turns 30`); it asks y/n before commands and works
   on its own `orca/run-*` branch in a git worktree. Defaults to `claude-haiku-5-5` to keep testing cheap. Needs
   `ANTHROPIC_API_KEY` in `packages/engine/.env`.
-- `apps/web`: React + Vite UI. Runs currently come from a scripted demo (`src/run/demoSource.ts`) behind the
-  `RunSource` interface.
+- `apps/web`: React + Vite UI. Runs come through the `RunSource` interface: `src/run/desktopSource.ts` for real runs
+  in the desktop app when the project's folder is on this computer, else the scripted demo (`src/run/demoSource.ts`).
 - `apps/server`: Fastify + Drizzle/Postgres + Better Auth. Projects, machines, project folders, runs.
-- `apps/desktop`: Electron. Picks local folders; the page reaches it only through `src/preload.ts`, and every IPC call
-  is checked with `fromOrca` in `src/main.ts`.
+- `apps/desktop`: Electron. Picks local folders and runs the engine in the main process (`src/runs.ts`); the page
+  reaches it only through `src/preload.ts`, and every IPC call is checked with `fromOrca` in `src/main.ts`. In
+  development it reads the key from `packages/engine/.env`; `ORCA_FAKE_MODEL=1 pnpm dev` runs agents on scripted model
+  replies for free.
 - `apps/marketing`: Next.js landing page. Read `apps/marketing/AGENTS.md` before editing it.
 
 ## Commands
 
+Node 26 and pnpm 12, pinned in the root `package.json` (`engines`, `packageManager`) and `.nvmrc`. Installs on other
+versions are refused (`.npmrc`).
+
 - `pnpm dev`: shared + server + web + desktop together (`dev:web`, `dev:server`, `dev:desktop`, `dev:marketing` for one).
 - `pnpm typecheck`: typecheck every package.
+- `pnpm test`: Vitest. Engine tests (`packages/engine/test/`) run offline on scripted model replies and throwaway git
+  repos, so they cost nothing; `pnpm --filter @orca/engine test:watch` while working on the engine.
 - `pnpm --filter @orca/server db:generate` / `db:migrate`: Drizzle migrations.
 - Env: copy `apps/server/.env.example` and `apps/web/.env.example` to `.env`. Never commit `.env`.
 

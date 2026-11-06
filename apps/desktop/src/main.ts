@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { initRepo, inspectFolder, isDirectory } from "./folders";
+import { attachRun, commandRun, loadDevKey, startRun, stopAllRuns } from "./runs";
 
 const DEV_URL = process.env.ORCA_DEV_URL;
 
@@ -94,6 +95,25 @@ function registerBridge() {
       return inspectFolder(folder);
     }),
   );
+
+  // Agent runs. Events go to every Orca window; each page keeps only its own run's.
+  const broadcast = (event: unknown) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (orcaWindows.has(win.webContents)) win.webContents.send("orca:run-event", event);
+    }
+  };
+  ipcMain.handle(
+    "orca:run-attach",
+    guard((_event, runId: unknown) => attachRun(runId)),
+  );
+  ipcMain.handle(
+    "orca:run-start",
+    guard((_event, input: unknown) => startRun(input, broadcast)),
+  );
+  ipcMain.handle(
+    "orca:run-command",
+    guard((_event, command: unknown) => commandRun(command)),
+  );
 }
 
 function createWindow() {
@@ -132,6 +152,17 @@ function createWindow() {
     win.loadFile(path.join(__dirname, "../../web/dist/index.html"));
   }
 }
+
+if (DEV_URL) loadDevKey();
+
+// Give running agents a moment to stop and commit their work to their branches before the app exits.
+let quitting = false;
+app.on("before-quit", (event) => {
+  if (quitting) return;
+  quitting = true;
+  event.preventDefault();
+  void stopAllRuns().finally(() => app.quit());
+});
 
 app.whenReady().then(() => {
   registerBridge();

@@ -4,15 +4,19 @@
   "version": "0.0.1",
   "main": "dist/main.js",
   "scripts": {
-    "dev": "tsc -p tsconfig.json && wait-on tcp:5173 && cross-env ORCA_DEV_URL=http://localhost:5173 electron .",
+    "dev": "pnpm --filter @orca/shared --filter @orca/engine build && tsc -p tsconfig.json && wait-on tcp:5173 && cross-env ORCA_DEV_URL=http://localhost:5173 electron .",
     "build": "tsc -p tsconfig.json",
     "start": "electron .",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "pnpm --filter @orca/engine build && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@orca/engine": "workspace:*",
+    "@orca/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "cross-env": "^7.0.3",
-    "electron": "^33.0.0",
+    "electron": "^45.2.3",
     "wait-on": "^8.0.0"
   }
 }
