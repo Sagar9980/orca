@@ -12,10 +12,10 @@ interface Props {
 }
 
 const LEGEND = [
-  { label: "Prompt", color: "var(--accent)", dash: "5 4" },
-  { label: "Reply", color: "var(--mint)", dash: "5 4" },
-  { label: "Waiting on an answer", color: "var(--amber)", dash: "2 4" },
-  { label: "Issue found", color: "var(--coral)", dash: "5 4" },
+  { label: "Prompt", color: "var(--color-primary)", dash: "5 4" },
+  { label: "Reply", color: "var(--color-success)", dash: "5 4" },
+  { label: "Waiting on an answer", color: "var(--color-warning)", dash: "2 4" },
+  { label: "Issue found", color: "var(--color-destructive)", dash: "5 4" },
 ];
 
 export function Stage({ state, agent, paused, onRespond }: Props) {
@@ -28,16 +28,18 @@ export function Stage({ state, agent, paused, onRespond }: Props) {
   const tokens = subs.reduce((n, s) => n + s.tokens, 0);
 
   return (
-    <main className="stage">
-      <div className="st-head">
-        <div className="st-title">
+    <main className="flex min-w-0 flex-col gap-[18px]">
+      <div className="flex flex-wrap items-end justify-between gap-x-7 gap-y-4">
+        <div className="min-w-0 flex-[1_1_340px]">
           <span className="eyebrow">
             {subs.length} sub-agents · {AGENT_STATUS_LABEL[agent.status]}
           </span>
-          <h1>{agent.name}</h1>
-          <p>{agent.mission}</p>
+          <h1 className="my-1.5 font-display text-[clamp(30px,3.4vw,44px)] leading-none font-[750] tracking-[-0.03em] text-balance">
+            {agent.name}
+          </h1>
+          <p className="max-w-[62ch] text-muted-foreground">{agent.mission}</p>
         </div>
-        <dl className="stats">
+        <dl className="flex gap-6 max-[520px]:gap-4 [&_dd]:font-mono [&_dd]:text-xl [&_dd]:leading-none [&_dd]:font-medium [&_dd]:tabular-nums max-[520px]:[&_dd]:text-[17px] [&_dt]:font-mono [&_dt]:text-[10.5px] [&_dt]:leading-none [&_dt]:font-medium [&_dt]:tracking-[0.1em] [&_dt]:text-faint [&_dt]:uppercase [&>div]:flex [&>div]:flex-col [&>div]:gap-[5px]">
           <div>
             <dt>Sub-agents</dt>
             <dd>{subs.length}</dd>
@@ -53,16 +55,16 @@ export function Stage({ state, agent, paused, onRespond }: Props) {
         </dl>
       </div>
 
-      <div className="legend" aria-label="Legend">
+      <div className="flex flex-wrap gap-x-[18px] gap-y-2 text-xs text-muted-foreground" aria-label="Legend">
         {LEGEND.map((item) => (
-          <span key={item.label}>
-            <svg viewBox="0 0 26 6" aria-hidden="true">
+          <span key={item.label} className="inline-flex items-center gap-[7px]">
+            <svg viewBox="0 0 26 6" aria-hidden="true" className="h-1.5 w-[26px]">
               <line x1="1" y1="3" x2="25" y2="3" stroke={item.color} strokeWidth="2" strokeDasharray={item.dash} />
             </svg>
             {item.label}
           </span>
         ))}
-        <span className="legend-hint">Click a sub-agent to trace its messages</span>
+        <span className="text-faint">Click a sub-agent to trace its messages</span>
       </div>
 
       <Board

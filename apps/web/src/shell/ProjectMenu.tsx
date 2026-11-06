@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { Project } from "@orca/shared";
 import { ProviderIcon } from "../auth/ui";
-import { BackIcon, CheckIcon, ChevronIcon, FolderIcon } from "../components/icons";
+import { BackIcon, ChevronIcon, FolderIcon } from "../components/icons";
 import { desktop } from "../lib/desktop";
 import { useShell } from "./context";
+import { Menu, MenuBack, MenuHead, MenuItem, MenuNote, MenuSeparator } from "./Popover";
 
 interface Props {
   projects: Project[];
@@ -36,67 +37,54 @@ export function ProjectMenu({ projects, selectedId, onChoose, onAdded, onClose }
 
   if (view === "github") {
     return (
-      <div className="pm">
-        <div className="pm-head">
-          <button className="pm-back" type="button" onClick={() => setView("list")}>
+      <Menu>
+        <MenuHead>
+          <MenuBack onClick={() => setView("list")}>
             <BackIcon />
             Back
-          </button>
+          </MenuBack>
           <span>GitHub</span>
-        </div>
-        <p className="pm-note">
+        </MenuHead>
+        <MenuNote>
           Connecting GitHub repos is coming next. Until then, clone the repo to your computer and add it with{" "}
           <b>Open folder</b>.
-        </p>
-      </div>
+        </MenuNote>
+      </Menu>
     );
   }
 
   return (
-    <div className="pm" role="menu">
-      <div className="pm-head">
+    <Menu role="menu">
+      <MenuHead>
         <span>{projects.length ? "Projects" : "Add a project"}</span>
-      </div>
+      </MenuHead>
       {projects.map((p) => (
-        <button key={p.id} className="pm-item" type="button" role="menuitem" onClick={() => onChoose(p)}>
-          <span className="pm-icon">
-            <ProjectGlyph project={p} />
-          </span>
-          <span className="pm-text">
-            <span className="pm-name">{p.name}</span>
-            <span className="pm-sub">{projectLocation(p)}</span>
-          </span>
-          {p.id === selectedId ? (
-            <span className="pm-end pm-check">
-              <CheckIcon />
-            </span>
-          ) : (
-            <span />
-          )}
-        </button>
+        <MenuItem
+          key={p.id}
+          role="menuitem"
+          icon={<ProjectGlyph project={p} />}
+          name={p.name}
+          sub={projectLocation(p)}
+          checked={p.id === selectedId}
+          onClick={() => onChoose(p)}
+        />
       ))}
-      {projects.length > 0 && <div className="pm-sep" role="separator" />}
-      <button className="pm-item" type="button" role="menuitem" disabled={!desktop} onClick={openFolder}>
-        <span className="pm-icon">
-          <FolderIcon />
-        </span>
-        <span className="pm-text">
-          <span className="pm-name">Open folder…</span>
-          {!desktop && <span className="pm-sub">Only in the Orca desktop app</span>}
-        </span>
-        <span />
-      </button>
-      <button className="pm-item" type="button" role="menuitem" onClick={() => setView("github")}>
-        <span className="pm-icon">
-          <ProviderIcon provider="github" />
-        </span>
-        <span className="pm-text">
-          <span className="pm-name">Connect GitHub repo…</span>
-        </span>
-        <span className="pm-end">
-          <ChevronIcon />
-        </span>
-      </button>
-    </div>
+      {projects.length > 0 && <MenuSeparator />}
+      <MenuItem
+        role="menuitem"
+        icon={<FolderIcon />}
+        name="Open folder…"
+        sub={!desktop && "Only in the Orca desktop app"}
+        disabled={!desktop}
+        onClick={openFolder}
+      />
+      <MenuItem
+        role="menuitem"
+        icon={<ProviderIcon provider="github" />}
+        name="Connect GitHub repo…"
+        end={<ChevronIcon />}
+        onClick={() => setView("github")}
+      />
+    </Menu>
   );
 }

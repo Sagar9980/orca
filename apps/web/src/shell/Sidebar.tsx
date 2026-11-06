@@ -1,6 +1,9 @@
 import { useRef, useState } from "react";
 import type { Project, RunStatus } from "@orca/shared";
 import { ChevronIcon, ComposeIcon, OrcaMark, PlusIcon, SidebarIcon, ThemeIcon } from "../components/icons";
+import { StatusDot } from "../components/StatusDot";
+import { Button } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import { initials } from "../lib/labels";
 import { readPref, writePref } from "../lib/hooks";
 import { refreshProjects, useProjects } from "../projects/store";
@@ -35,6 +38,17 @@ function projectSignal(p: Project): RunStatus | null {
   return null;
 }
 
+/** The Orca mark and name, in the sidebar and the phone header. */
+export const brandClass =
+  "inline-flex items-center gap-[9px] font-display text-[17px] leading-none font-bold tracking-[-0.02em] text-foreground no-underline [&_svg]:size-[22px] [&_svg]:shrink-0 [&_svg]:text-primary";
+
+/** A link row: New run, a project, a run, the account. */
+const row =
+  "flex min-h-[34px] min-w-0 flex-1 items-center gap-2.5 rounded-[9px] px-2.5 py-1.5 text-[13.5px] text-muted-foreground no-underline hover:bg-card hover:text-foreground aria-[current=page]:bg-card aria-[current=page]:text-foreground aria-[current=page]:shadow-[inset_0_0_0_1px_var(--color-border)] [&>svg]:size-4 [&>svg]:shrink-0";
+/** Text that hides while the sidebar is folded. */
+const label = "min-w-0 flex-1 truncate folded:hidden";
+const empty = "px-2.5 py-1.5 text-[12.5px] whitespace-normal text-faint folded:hidden";
+
 const OPEN_KEY = "orca-open-projects";
 function readOpen(): Set<string> {
   try {
@@ -44,7 +58,7 @@ function readOpen(): Set<string> {
   }
 }
 
-export function Sidebar({ route, user, pin, onToggleTheme }: Props) {
+export function Sidebar({ route, user, pin, folded, onToggleTheme }: Props & { folded: boolean }) {
   const { projects, loaded, error } = useProjects();
   const [open, setOpen] = useState(readOpen);
   const [menu, setMenu] = useState(false);
@@ -63,100 +77,115 @@ export function Sidebar({ route, user, pin, onToggleTheme }: Props) {
   const name = user.name || user.email;
 
   return (
-    <nav className="sb" aria-label="Projects and runs">
-      <div className="sb-in">
-        <div className="sb-top">
-          <Link to="/" className="sb-brand" aria-label="Orca home">
+    <nav
+      className="absolute inset-y-0 left-0 w-full overflow-hidden border-r bg-panel transition-[width,box-shadow] duration-180 data-folded:hover:w-[264px] data-folded:hover:shadow-[18px_0_40px_-22px_rgba(0,0,0,0.6)] data-folded:focus-within:w-[264px] data-folded:focus-within:shadow-[18px_0_40px_-22px_rgba(0,0,0,0.6)] motion-reduce:transition-none"
+      data-folded={folded || undefined}
+      aria-label="Projects and runs"
+    >
+      <div className="flex h-full w-[264px] flex-col gap-0.5 px-2.5 pb-2.5 folded:w-[60px] folded:items-center max-[780px]:w-full">
+        <div className="mb-1.5 flex h-14 flex-none items-center justify-between gap-2 pr-1 pl-2 folded:justify-center folded:p-0">
+          <Link to="/" className={brandClass} aria-label="Orca home">
             <OrcaMark />
-            <span className="sb-lbl">Orca</span>
+            <span className={label}>Orca</span>
           </Link>
           {pin && (
-            <button
-              className="sb-icon sb-lbl"
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon"
+              className="folded:hidden"
               onClick={pin.toggle}
               aria-label={pin.pinned ? "Fold sidebar" : "Keep sidebar open"}
               title={`${pin.pinned ? "Fold sidebar" : "Keep sidebar open"} (⌘B)`}
             >
               <SidebarIcon />
-            </button>
+            </Button>
           )}
         </div>
 
-        <Link to="/" className="sb-row sb-new" aria-current={route.view === "home" ? "page" : undefined}>
+        <Link
+          to="/"
+          className={cn(row, "mb-2 w-full flex-none font-semibold text-foreground")}
+          aria-current={route.view === "home" ? "page" : undefined}
+        >
           <ComposeIcon />
-          <span className="sb-lbl">New run</span>
+          <span className={label}>New run</span>
         </Link>
 
-        <div className="sb-sec">
+        <div className="flex items-center justify-between pt-2 pr-1 pb-1 pl-2.5 font-mono text-[10.5px] leading-none font-medium tracking-[0.12em] text-faint uppercase folded:hidden">
           <span>Projects</span>
-          <button
+          <Button
             ref={addRef}
-            className="sb-icon"
-            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6"
             aria-label="Add a project"
             aria-haspopup="dialog"
             aria-expanded={menu}
             onClick={() => setMenu((m) => !m)}
           >
             <PlusIcon />
-          </button>
+          </Button>
         </div>
 
-        <div className="sb-list">
+        <div className="flex min-h-0 w-full flex-1 flex-col gap-px overflow-y-auto">
           {error && (
-            <div className="sb-empty sb-lbl">
+            <div className={empty}>
               {error}{" "}
-              <button className="linkbtn" type="button" onClick={() => void refreshProjects()}>
+              <Button variant="link" onClick={() => void refreshProjects()}>
                 Try again
-              </button>
+              </Button>
             </div>
           )}
-          {loaded && !error && projects.length === 0 && (
-            <div className="sb-empty sb-lbl">Add a folder to start your first run.</div>
-          )}
+          {loaded && !error && projects.length === 0 && <div className={empty}>Add a folder to start your first run.</div>}
           {projects.map((p) => {
             const isOpen = open.has(p.id) || p.slug === activeSlug;
             const signal = projectSignal(p);
             return (
-              <div key={p.id} className={isOpen ? "sb-proj is-open" : "sb-proj"}>
-                <div className="sb-proj-row">
+              <div key={p.id}>
+                <div className="relative flex items-center">
                   <button
-                    className="sb-chev"
+                    className="absolute top-1/2 left-0 z-1 grid h-[26px] w-5 -translate-y-1/2 place-items-center rounded-md p-0 text-faint hover:text-foreground folded:hidden [&_svg]:size-[11px]"
                     type="button"
                     aria-label={isOpen ? `Hide runs in ${p.name}` : `Show runs in ${p.name}`}
                     aria-expanded={isOpen}
                     onClick={() => setProjectOpen(p.id, !isOpen)}
                   >
-                    <ChevronIcon />
+                    <span className={cn("inline-grid transition-transform", isOpen && "rotate-90")}>
+                      <ChevronIcon />
+                    </span>
                   </button>
                   <Link
                     to={`/p/${p.slug}`}
-                    className="sb-row"
+                    className={cn(row, "pl-[22px] folded:justify-center folded:pl-2.5")}
                     title={p.name}
                     aria-current={route.view === "project" && p.slug === activeSlug ? "page" : undefined}
                     onClick={() => setProjectOpen(p.id, true)}
                   >
-                    <span className="sb-glyph">
+                    <span className="relative grid size-[22px] flex-none place-items-center rounded-md border bg-card text-muted-foreground [&>svg]:size-3">
                       <ProjectGlyph project={p} />
-                      {signal && <i className={`dot dot-${signal}`} />}
+                      {signal && (
+                        <StatusDot
+                          status={signal}
+                          className="absolute -top-[3px] -right-[3px] shadow-[0_0_0_2px_var(--color-panel)]"
+                        />
+                      )}
                     </span>
-                    <span className="sb-lbl">{p.name}</span>
+                    <span className={label}>{p.name}</span>
                   </Link>
                 </div>
                 {isOpen && (
-                  <div className="sb-runs">
-                    {p.runs.length === 0 && <div className="sb-empty sb-lbl">No runs yet</div>}
+                  <div className="flex flex-col gap-px pt-px pb-1.5 pl-[22px] folded:hidden">
+                    {p.runs.length === 0 && <div className={empty}>No runs yet</div>}
                     {p.runs.map((r) => (
                       <Link
                         key={r.id}
                         to={`/p/${p.slug}/r/${r.id}`}
-                        className="sb-row sb-run"
+                        className={cn(row, "min-h-[30px] py-[5px] text-[13px]")}
                         title={`${r.title} · ${RUN_STATUS_LABEL[r.status]}`}
                         aria-current={route.view === "run" && route.runId === r.id ? "page" : undefined}
                       >
-                        <i className={`dot dot-${r.status}`} aria-hidden="true" />
-                        <span className="sb-lbl">{r.title}</span>
+                        <StatusDot status={r.status} />
+                        <span className={label}>{r.title}</span>
                       </Link>
                     ))}
                   </div>
@@ -166,14 +195,23 @@ export function Sidebar({ route, user, pin, onToggleTheme }: Props) {
           })}
         </div>
 
-        <div className="sb-foot">
-          <Link to="/account" className="sb-row" title="Account settings">
-            <span className="sb-av">{initials(name)}</span>
-            <span className="sb-lbl">{name}</span>
+        <div className="flex w-full flex-none items-center gap-1 border-t pt-2">
+          <Link to="/account" className={row} title="Account settings">
+            <span className="grid size-6 flex-none place-items-center rounded-[7px] bg-[color-mix(in_oklab,var(--color-primary)_15%,var(--color-card))] font-mono text-[10px] leading-none font-semibold text-primary">
+              {initials(name)}
+            </span>
+            <span className={label}>{name}</span>
           </Link>
-          <button className="sb-icon sb-lbl" type="button" onClick={onToggleTheme} aria-label="Switch theme" title="Switch theme">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="folded:hidden"
+            onClick={onToggleTheme}
+            aria-label="Switch theme"
+            title="Switch theme"
+          >
             <ThemeIcon />
-          </button>
+          </Button>
         </div>
       </div>
 

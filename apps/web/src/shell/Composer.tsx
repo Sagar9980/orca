@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type SyntheticEvent } from "react";
 import { DEFAULT_RUN_BUDGET_USD, RUN_BUDGET_CHOICES_USD, type Project } from "@orca/shared";
 import { Notice } from "../auth/ui";
-import { ArrowUpIcon, BranchIcon, CaretIcon, CheckIcon, CoinIcon, PlusIcon } from "../components/icons";
+import { ArrowUpIcon, BranchIcon, CaretIcon, CoinIcon, PlusIcon } from "../components/icons";
+import { Spinner } from "../components/ui/spinner";
+import { cn } from "../lib/utils";
 import { desktop } from "../lib/desktop";
 import { navigate } from "../router";
 import { startRun } from "../projects/store";
-import { Popover } from "./Popover";
+import { Menu, MenuHead, MenuItem, MenuNote, Popover } from "./Popover";
 import { ProjectGlyph, ProjectMenu } from "./ProjectMenu";
 
 interface Props {
@@ -14,7 +16,12 @@ interface Props {
   onSelectProject: (project: Project) => void;
 }
 
-type Menu = "project" | "branch" | "budget" | null;
+type OpenMenu = "project" | "branch" | "budget" | null;
+
+/** A setting under the text box: project, branch, spend limit. */
+const chip =
+  "inline-flex h-[30px] max-w-full items-center gap-[7px] rounded-[9px] border bg-panel px-2.5 text-[12.5px] text-foreground hover:border-border-strong aria-expanded:border-primary [&_svg]:size-[13px] [&_svg]:shrink-0 [&_svg]:text-muted-foreground [&>svg:last-child:not(:first-child)]:size-2.5 [&>svg:last-child:not(:first-child)]:text-faint";
+const chipText = "min-w-0 truncate";
 
 /** "What should Orca build?" box. Starting a run creates it on the server and opens its workspace. */
 export function Composer({ projects, project, onSelectProject }: Props) {
@@ -22,7 +29,7 @@ export function Composer({ projects, project, onSelectProject }: Props) {
   const [branch, setBranch] = useState(project?.defaultBranch ?? "main");
   const [branches, setBranches] = useState<string[]>([]);
   const [budget, setBudget] = useState<number>(DEFAULT_RUN_BUDGET_USD);
-  const [menu, setMenu] = useState<Menu>(null);
+  const [menu, setMenu] = useState<OpenMenu>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -81,11 +88,14 @@ export function Composer({ projects, project, onSelectProject }: Props) {
   };
 
   const close = () => setMenu(null);
-  const toggle = (m: Exclude<Menu, null>) => setMenu((cur) => (cur === m ? null : m));
+  const toggle = (m: Exclude<OpenMenu, null>) => setMenu((cur) => (cur === m ? null : m));
 
   return (
-    <div className="cp-wrap">
-      <form className="cp" onSubmit={submit}>
+    <div className="flex flex-col gap-2.5">
+      <form
+        className="rounded-[18px] border border-border-strong bg-card shadow-[0_24px_50px_-36px_rgba(0,0,0,0.6)] transition-[border-color,box-shadow] duration-150 focus-within:border-[color-mix(in_oklab,var(--color-primary)_60%,var(--color-border-strong))] focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-primary)_12%,transparent),0_24px_50px_-36px_rgba(0,0,0,0.6)]"
+        onSubmit={submit}
+      >
         <label htmlFor="composer-input" className="sr-only">
           What should Orca build?
         </label>
@@ -97,24 +107,25 @@ export function Composer({ projects, project, onSelectProject }: Props) {
           placeholder={project ? "Describe a feature, a fix or a refactor…" : "Choose a project, then describe what to build…"}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
+          className="block max-h-[260px] min-h-[84px] w-full resize-none bg-transparent px-[18px] pt-4 pb-1.5 text-[15.5px] leading-normal text-foreground placeholder:text-faint focus:outline-none"
         />
-        <div className="cp-bar">
+        <div className="flex flex-wrap items-center gap-1.5 px-2.5 pt-2 pb-2.5">
           <button
             ref={projectChip}
-            className={project ? "cp-chip" : "cp-chip cp-chip-ghost"}
+            className={cn(chip, !project && "border-dashed text-primary [&_svg]:text-primary")}
             type="button"
             aria-haspopup="dialog"
             aria-expanded={menu === "project"}
             onClick={() => toggle("project")}
           >
             {project ? <ProjectGlyph project={project} /> : <PlusIcon />}
-            <span className="cp-chip-text">{project ? project.name : "Choose project"}</span>
+            <span className={chipText}>{project ? project.name : "Choose project"}</span>
             {project && <CaretIcon />}
           </button>
           {project && (
             <button
               ref={branchChip}
-              className="cp-chip"
+              className={chip}
               type="button"
               aria-haspopup="dialog"
               aria-expanded={menu === "branch"}
@@ -122,13 +133,13 @@ export function Composer({ projects, project, onSelectProject }: Props) {
               onClick={() => toggle("branch")}
             >
               <BranchIcon />
-              <span className="cp-chip-text mono">{branch}</span>
+              <span className={cn(chipText, "font-mono text-xs")}>{branch}</span>
               <CaretIcon />
             </button>
           )}
           <button
             ref={budgetChip}
-            className="cp-chip"
+            className={chip}
             type="button"
             aria-haspopup="dialog"
             aria-expanded={menu === "budget"}
@@ -136,11 +147,16 @@ export function Composer({ projects, project, onSelectProject }: Props) {
             onClick={() => toggle("budget")}
           >
             <CoinIcon />
-            <span className="cp-chip-text">${budget} limit</span>
+            <span className={chipText}>${budget} limit</span>
             <CaretIcon />
           </button>
-          <button className="cp-send" type="submit" disabled={!canSend} aria-label="Start run">
-            {busy ? <span className="spinner" /> : <ArrowUpIcon />}
+          <button
+            className="ml-auto grid size-[34px] flex-none place-items-center rounded-[10px] bg-primary p-0 text-primary-foreground disabled:bg-border-strong disabled:text-faint disabled:opacity-100 [&_svg]:size-4"
+            type="submit"
+            disabled={!canSend}
+            aria-label="Start run"
+          >
+            {busy ? <Spinner /> : <ArrowUpIcon />}
           </button>
         </div>
       </form>
@@ -162,72 +178,47 @@ export function Composer({ projects, project, onSelectProject }: Props) {
       )}
       {menu === "branch" && (
         <Popover anchor={branchChip} onClose={close} label="Start from branch">
-          <div className="pm">
-            <div className="pm-head">
+          <Menu>
+            <MenuHead>
               <span>Start from branch</span>
-            </div>
+            </MenuHead>
             {branchList.map((b) => (
-              <button
+              <MenuItem
                 key={b}
-                className="pm-item"
-                type="button"
+                icon={<BranchIcon />}
+                name={b}
+                mono
+                checked={b === branch}
                 onClick={() => {
                   setBranch(b);
                   close();
                 }}
-              >
-                <span className="pm-icon">
-                  <BranchIcon />
-                </span>
-                <span className="pm-text">
-                  <span className="pm-name mono">{b}</span>
-                </span>
-                {b === branch ? (
-                  <span className="pm-end pm-check">
-                    <CheckIcon />
-                  </span>
-                ) : (
-                  <span />
-                )}
-              </button>
+              />
             ))}
-            <p className="pm-foot">The run starts from this branch.</p>
-          </div>
+            <MenuNote quiet>The run starts from this branch.</MenuNote>
+          </Menu>
         </Popover>
       )}
       {menu === "budget" && (
         <Popover anchor={budgetChip} onClose={close} label="Spend limit">
-          <div className="pm">
-            <div className="pm-head">
+          <Menu>
+            <MenuHead>
               <span>Spend limit for this run</span>
-            </div>
+            </MenuHead>
             {RUN_BUDGET_CHOICES_USD.map((b) => (
-              <button
+              <MenuItem
                 key={b}
-                className="pm-item"
-                type="button"
+                icon={<CoinIcon />}
+                name={"$" + b}
+                checked={b === budget}
                 onClick={() => {
                   setBudget(b);
                   close();
                 }}
-              >
-                <span className="pm-icon">
-                  <CoinIcon />
-                </span>
-                <span className="pm-text">
-                  <span className="pm-name">${b}</span>
-                </span>
-                {b === budget ? (
-                  <span className="pm-end pm-check">
-                    <CheckIcon />
-                  </span>
-                ) : (
-                  <span />
-                )}
-              </button>
+              />
             ))}
-            <p className="pm-foot">The most this run may spend on model usage.</p>
-          </div>
+            <MenuNote quiet>The most this run may spend on model usage.</MenuNote>
+          </Menu>
         </Popover>
       )}
     </div>

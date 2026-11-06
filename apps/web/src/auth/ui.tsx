@@ -1,46 +1,83 @@
 import { useEffect, useId, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { cva } from "class-variance-authority";
 import { OrcaMark } from "../components/icons";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Spinner } from "../components/ui/spinner";
+import { cn } from "../lib/utils";
 import { Link } from "../router";
 import { appUrl, authClient, describeError, loadAuthConfig, type AuthConfig, type SocialProvider } from "./client";
+
+const brand = "relative z-1 inline-flex items-center gap-2.5 font-display text-xl leading-none font-bold tracking-[-0.02em] text-foreground no-underline [&_svg]:size-[26px] [&_svg]:text-primary";
 
 /** Split screen: the Orca story on the left, the form on the right. Stacks on phones. */
 export function AuthLayout({ title, lede, children, footer }: { title: string; lede?: ReactNode; children?: ReactNode; footer?: ReactNode }) {
   return (
-    <div className="auth">
-      <aside className="auth-story" aria-hidden="true">
-        <div className="auth-brand">
+    <div className="mx-auto grid max-w-[1320px] grid-cols-1 overflow-hidden min-[861px]:min-h-[calc(100vh-44px-var(--tb))] min-[861px]:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] min-[861px]:rounded-[22px] min-[861px]:border min-[861px]:bg-panel">
+      <aside
+        className="dot-grid relative hidden flex-col justify-between gap-8 overflow-hidden border-r bg-background px-10 py-9 min-[861px]:flex"
+        aria-hidden="true"
+      >
+        <div className={brand}>
           <OrcaMark />
           Orca
         </div>
-        <div className="auth-sonar">
+        <div className="auth-sonar absolute top-[46%] left-[62%] size-0">
           <span />
           <span />
           <span />
         </div>
-        <div className="auth-pitch">
-          <p className="auth-pitch-head">Give it an idea. Orca runs the team.</p>
-          <ul>
-            <li><span className="eyebrow">Plans</span>Breaks your idea into steps</li>
-            <li><span className="eyebrow">Spawns</span>Starts the agents each step needs</li>
-            <li><span className="eyebrow">Asks</span>Comes to you only when a human must decide</li>
+        <div className="relative z-1 max-w-[30ch]">
+          <p className="mb-[22px] font-display text-[clamp(30px,3.2vw,42px)] leading-[1.05] font-[750] tracking-[-0.03em] text-balance">
+            Give it an idea. Orca runs the team.
+          </p>
+          <ul className="grid gap-3">
+            {PITCH.map(([verb, text]) => (
+              <li key={verb} className="grid grid-cols-[74px_1fr] items-baseline gap-2.5 text-sm text-muted-foreground">
+                <span className="eyebrow text-primary">{verb}</span>
+                {text}
+              </li>
+            ))}
           </ul>
         </div>
       </aside>
-      <main className="auth-main">
-        <div className="auth-card">
-          <Link to="/sign-in" className="auth-brand auth-brand-compact">
+      <main className="grid place-items-[start_center] py-6 min-[861px]:place-items-center min-[861px]:px-8 min-[861px]:py-12">
+        <div className="flex w-full max-w-[400px] flex-col gap-[18px]">
+          <Link to="/sign-in" className={cn(brand, "mb-2 min-[861px]:hidden")}>
             <OrcaMark />
             Orca
           </Link>
-          <h1>{title}</h1>
-          {lede && <p className="auth-lede">{lede}</p>}
+          <h1 className="font-display text-[32px] leading-[1.05] font-[750] tracking-[-0.025em] text-balance">{title}</h1>
+          {lede && (
+            <p className="-mt-1.5 mb-1 text-[14.5px] leading-[1.55] text-muted-foreground [&_strong]:font-semibold [&_strong]:wrap-anywhere [&_strong]:text-foreground">
+              {lede}
+            </p>
+          )}
           {children}
-          {footer && <div className="auth-footer">{footer}</div>}
+          {footer && (
+            <div className="border-t pt-4 text-[13.5px] text-muted-foreground [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-3">
+              {footer}
+            </div>
+          )}
         </div>
       </main>
     </div>
   );
 }
+
+const PITCH = [
+  ["Plans", "Breaks your idea into steps"],
+  ["Spawns", "Starts the agents each step needs"],
+  ["Asks", "Comes to you only when a human must decide"],
+];
+
+/** A form with its fields stacked. */
+export const formStack = "flex flex-col gap-4";
+/** Buttons and links under a message, e.g. "Resend the email". */
+export const authSteps = "flex flex-col gap-3.5 text-sm text-muted-foreground";
+
+const labelClass = "text-[13px] font-semibold";
+const hintClass = "text-[12.5px] text-faint";
 
 type FieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: ReactNode };
 
@@ -48,11 +85,13 @@ export function Field({ label, hint, id, ...input }: FieldProps) {
   const auto = useId();
   const fieldId = id ?? auto;
   return (
-    <div className="field">
-      <label htmlFor={fieldId}>{label}</label>
-      <input id={fieldId} {...input} aria-describedby={hint ? `${fieldId}-hint` : undefined} />
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={fieldId} className={labelClass}>
+        {label}
+      </label>
+      <Input id={fieldId} {...input} aria-describedby={hint ? `${fieldId}-hint` : undefined} />
       {hint && (
-        <p className="field-hint" id={`${fieldId}-hint`}>
+        <p className={hintClass} id={`${fieldId}-hint`}>
           {hint}
         </p>
       )}
@@ -65,16 +104,23 @@ export function PasswordField({ label, hint, id, ...input }: FieldProps) {
   const auto = useId();
   const fieldId = id ?? auto;
   return (
-    <div className="field">
-      <div className="field-row">
-        <label htmlFor={fieldId}>{label}</label>
-        <button type="button" className="linkbtn" onClick={() => setShown((s) => !s)} aria-controls={fieldId}>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between">
+        <label htmlFor={fieldId} className={labelClass}>
+          {label}
+        </label>
+        <Button variant="link" onClick={() => setShown((s) => !s)} aria-controls={fieldId}>
           {shown ? "Hide" : "Show"}
-        </button>
+        </Button>
       </div>
-      <input id={fieldId} type={shown ? "text" : "password"} {...input} aria-describedby={hint ? `${fieldId}-hint` : undefined} />
+      <Input
+        id={fieldId}
+        type={shown ? "text" : "password"}
+        {...input}
+        aria-describedby={hint ? `${fieldId}-hint` : undefined}
+      />
       {hint && (
-        <p className="field-hint" id={`${fieldId}-hint`}>
+        <p className={hintClass} id={`${fieldId}-hint`}>
           {hint}
         </p>
       )}
@@ -82,18 +128,39 @@ export function PasswordField({ label, hint, id, ...input }: FieldProps) {
   );
 }
 
-export function Submit({ busy, children, ...rest }: { busy: boolean; children: ReactNode; disabled?: boolean; className?: string }) {
+export function Submit({
+  busy,
+  children,
+  disabled,
+  variant = "default",
+  className,
+}: {
+  busy: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  variant?: "default" | "destructive";
+  className?: string;
+}) {
   return (
-    <button type="submit" className={`btn-primary ${rest.className ?? ""}`} disabled={busy || rest.disabled} aria-busy={busy}>
-      {busy && <span className="spinner" aria-hidden="true" />}
+    <Button type="submit" size="lg" variant={variant} className={className} disabled={busy || disabled} aria-busy={busy}>
+      {busy && <Spinner />}
       {children}
-    </button>
+    </Button>
   );
 }
 
+const notice = cva(
+  "rounded-lg border border-(--tone)/45 bg-(--tone)/11 px-3.5 py-[11px] text-[13.5px] leading-normal text-foreground [&_strong]:font-semibold [&_strong]:wrap-anywhere",
+  {
+    variants: {
+      tone: { error: "tone-destructive", info: "tone-primary", success: "tone-success" },
+    },
+  },
+);
+
 export function Notice({ tone, children }: { tone: "error" | "info" | "success"; children: ReactNode }) {
   return (
-    <div className={`notice notice-${tone}`} role={tone === "error" ? "alert" : "status"}>
+    <div className={notice({ tone })} role={tone === "error" ? "alert" : "status"}>
       {children}
     </div>
   );
@@ -135,15 +202,22 @@ export function SocialButtons({ onError }: { onError: (message: string) => void 
 
   return (
     <>
-      <div className="social">
+      <div className="flex flex-col gap-2.5">
         {config.socialProviders.map((p) => (
-          <button key={p} type="button" className="btn-social" onClick={() => go(p)} disabled={busy !== null}>
-            {busy === p ? <span className="spinner" aria-hidden="true" /> : <ProviderIcon provider={p} />}
+          <Button
+            key={p}
+            variant="secondary"
+            size="lg"
+            className="w-full [&_svg]:size-[17px]"
+            onClick={() => go(p)}
+            disabled={busy !== null}
+          >
+            {busy === p ? <Spinner /> : <ProviderIcon provider={p} />}
             Continue with {PROVIDER_LABEL[p]}
-          </button>
+          </Button>
         ))}
       </div>
-      <div className="divider">
+      <div className="flex items-center gap-3 font-mono text-[11px] leading-none font-medium tracking-[0.1em] text-faint uppercase before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
         <span>or use email</span>
       </div>
     </>
