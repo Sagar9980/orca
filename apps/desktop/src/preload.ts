@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("orca", {
   chooseFolder: () => ipcRenderer.invoke("orca:choose-folder"),
   inspectFolder: (folder: string) => ipcRenderer.invoke("orca:inspect-folder", folder),
   initGit: (folder: string) => ipcRenderer.invoke("orca:init-git", folder),
+  setTheme: (theme: string) => ipcRenderer.invoke("orca:set-theme", theme),
   runAttach: (runId: string) => ipcRenderer.invoke("orca:run-attach", runId),
   runStart: (input: unknown) => ipcRenderer.invoke("orca:run-start", input),
   runCommand: (command: unknown) => ipcRenderer.invoke("orca:run-command", command),
