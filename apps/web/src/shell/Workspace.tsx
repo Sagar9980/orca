@@ -3,10 +3,12 @@ import type { Project, RunSummary } from "@orca/shared";
 import { AgentRail } from "../components/AgentRail";
 import { BranchIcon, MenuIcon, PauseIcon, PlayIcon } from "../components/icons";
 import { Stage } from "../components/Stage";
+import { desktop } from "../lib/desktop";
 import { readPref, writePref, useNow } from "../lib/hooks";
 import { formatClock } from "../lib/labels";
 import { Link } from "../router";
 import { createDemoSource } from "../run/demoSource";
+import { createDesktopSource } from "../run/desktopSource";
 import { useRun } from "../run/useRun";
 import { useShell } from "./context";
 
@@ -30,8 +32,21 @@ const STATUS_TEXT: Record<string, string> = {
 /** "/p/:slug/r/:runId" — the full-size agent workspace for one run. */
 export function Workspace({ project, run }: { project: Project; run: RunSummary }) {
   const shell = useShell();
-  // The orchestrator isn't connected yet, so every run plays the example team. One source per run.
-  const source = useMemo(() => createDemoSource(), [run.id]);
+  const [startError, setStartError] = useState<string | null>(null);
+  // In the desktop app, with the project's folder on this computer, a real agent works on it. Anywhere else the
+  // run plays the example team. One source per run.
+  const folder = desktop ? project.folder : null;
+  const source = useMemo(
+    () =>
+      desktop && folder
+        ? createDesktopSource(
+            desktop,
+            { runId: run.id, title: run.title, folder, branch: run.branch, budgetUsd: run.budgetUsd },
+            setStartError,
+          )
+        : createDemoSource(),
+    [run.id, folder],
+  );
   useEffect(() => () => source.close?.(), [source]);
   const { state, send } = useRun(source);
   const [selectedId, setSelectedId] = useState(() => readPref("orca-agent"));
@@ -76,10 +91,12 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
         )}
         {live &&
           (finished ? (
-            <button className="btn" type="button" onClick={() => send({ type: "run.create", idea: run.title })}>
-              <PlayIcon />
-              Replay
-            </button>
+            !folder && (
+              <button className="btn" type="button" onClick={() => send({ type: "run.create", idea: run.title })}>
+                <PlayIcon />
+                Replay
+              </button>
+            )
           ) : (
             <button
               className="btn"
@@ -91,10 +108,13 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
             </button>
           ))}
       </header>
-      <p className="wk-example">
-        Example agents: the orchestrator isn't connected yet, so this run plays a sample team instead of working on{" "}
-        {project.name}.
-      </p>
+      {!folder && (
+        <p className="wk-example">
+          Example agents:{" "}
+          {desktop ? `${project.name}'s folder isn't on this computer` : "agents run in the desktop app"}, so this run
+          plays a sample team instead of working on {project.name}.
+        </p>
+      )}
       <div className="wk-body">
         {state && agent ? (
           <div className="shell">
@@ -106,6 +126,32 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
               paused={paused}
               onRespond={(requestId, response) => send({ type: "human.respond", runId: state.run.id, requestId, response })}
             />
+          </div>
+        ) : folder ? (
+          <div className="boot wk-start">
+            {state ? (
+              <p>{state.run.summary ?? "Starting…"}</p>
+            ) : (
+              <>
+                <p>
+                  A Builder agent will work on {project.name} on its own <b>orca/run-*</b> branch, made from{" "}
+                  <b>{run.branch}</b>. Your checkout isn't touched. It asks you before running commands or creating
+                  files, and stops at ${run.budgetUsd}.
+                </p>
+                <button
+                  className="btn-primary"
+                  type="button"
+                  onClick={() => {
+                    setStartError(null);
+                    send({ type: "run.create", idea: run.title });
+                  }}
+                >
+                  <PlayIcon />
+                  Start run
+                </button>
+              </>
+            )}
+            {startError && <p className="wk-start-error">{startError}</p>}
           </div>
         ) : (
           <div className="boot">Starting agents…</div>

@@ -66,7 +66,8 @@ START → model ──(has tool calls)──> gate ──> tools ──> model
 
 ## 3. Phases
 
-Each phase ends with something we can see working. Everything up to Phase D runs from the terminal.
+Each phase ends with something we can see working. From Phase D on, engine work is built and tested in the desktop
+app alongside the CLI, which stays as a quick way to debug the engine on its own.
 
 ### Phase A: The worker loop by hand
 
@@ -94,17 +95,22 @@ Each phase ends with something we can see working. Everything up to Phase D runs
 - [ ] Context management: big tool results, long runs, summarizing, prompt caching.
 - [x] Recovery: tool errors go back to the model, API errors retry, and the loop notices when it is stuck.
 - [x] Work in a git worktree / branch, never on uncommitted user work.
-- [ ] A small eval set: 5–10 test tasks that report pass rate, cost and turns, so changes are measured.
+- [ ] A small eval set: 5–10 test tasks that report pass rate, cost and turns, so changes are measured. Needed before
+      we change models or prompts.
 
 **Done when:** a real change to a real small repo works, and the eval numbers show whether a change helped.
 
 ### Phase D: Live in the UI
 
-- [ ] Settings screen for the API key, stored with `safeStorage`.
-- [ ] Run the engine in the desktop app. IPC calls for `run.start` and `run.command`, plus an event channel. Same
-      `fromOrca` guard as today.
-- [ ] Turn node output into `RunEvent`s. `DesktopRunSource` in `apps/web/src/run/` implements `RunSource`.
-- [ ] Interrupts appear as `HumanCard`s, and the answer resumes the graph.
+- [ ] Settings screen for the API key, stored with `safeStorage`. Until then the desktop app reads
+      `packages/engine/.env` in development.
+- [x] Run the engine in the desktop app (`apps/desktop/src/runs.ts`). IPC calls `orca:run-start`, `orca:run-attach`
+      and `orca:run-command`, plus the `orca:run-event` channel. Same `fromOrca` guard as today.
+- [x] Turn node output into `RunEvent`s (`startRun` in `packages/engine/src/run.ts`). `DesktopRunSource` in
+      `apps/web/src/run/` implements `RunSource`. A run only starts from its Start button, never by opening a page.
+- [x] Interrupts appear as `HumanCard`s, and the answer resumes the graph. Pause takes effect between turns.
+- [x] `ORCA_FAKE_MODEL=1` runs the real graph and gate on scripted model replies, so the UI can be tried for free.
+- [ ] Check it end to end in the app: a fake run, then one real Haiku run.
 
 **Done when:** typing an idea runs a real agent and the existing UI shows it live, with approvals working.
 

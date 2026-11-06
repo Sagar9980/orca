@@ -30,13 +30,19 @@ export interface Workspace {
   dirty: boolean;
 }
 
-export async function openWorkspace(project: string, runId: string): Promise<Workspace> {
+/** `from` is the branch or commit to start from; the repo's current HEAD when left out. */
+export async function openWorkspace(project: string, runId: string, from?: string): Promise<Workspace> {
+  // The run id becomes part of a branch name and a folder name.
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(runId)) throw new Error(`Invalid run id: ${runId}`);
+  if (from !== undefined && (from === "" || from.startsWith("-"))) throw new Error(`Invalid branch: ${from}`);
   const realProject = await fs.realpath(project);
   const repo = await git(realProject, "rev-parse", "--show-toplevel").catch(() => {
     throw new Error(`${project} is not in a git repository. Orca works on a branch, so run \`git init\` first.`);
   });
-  const base = await git(repo, "rev-parse", "--verify", "HEAD").catch(() => {
-    throw new Error(`${repo} has no commits yet. Commit once so Orca has something to branch from.`);
+  const base = await git(repo, "rev-parse", "--verify", "--end-of-options", `${from ?? "HEAD"}^{commit}`).catch(() => {
+    throw new Error(
+      from ? `Branch ${from} doesn't exist in ${repo}.` : `${repo} has no commits yet. Commit once so Orca can branch.`,
+    );
   });
 
   const dirty = (await git(repo, "status", "--porcelain")) !== "";

@@ -188,3 +188,8 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell, .sb, .sb-col { transition: none; }
 }
+.wk-start { align-content: center; gap: 14px; text-align: center; font-family: inherit; }
+.wk-start p { max-width: 520px; margin: 0; line-height: 1.55; }
+.wk-start b { color: var(--fg); font-weight: 500; }
+.wk-start .btn-primary svg { width: 14px; height: 14px; }
+.wk-start-error { color: var(--coral); }
