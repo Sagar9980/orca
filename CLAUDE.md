@@ -31,8 +31,8 @@ pnpm monorepo, TypeScript everywhere.
 
 ## Commands
 
-Node 26 and pnpm 12, pinned in the root `package.json` (`engines`, `packageManager`) and `.nvmrc`. Installs on other
-versions are refused (`.npmrc`).
+Node 26 and pnpm 12, pinned in the root `package.json` (`engines`, `packageManager`). Installs on other versions are
+refused (`engineStrict` in `pnpm-workspace.yaml`).
 
 - `pnpm dev`: shared + server + web + desktop together (`dev:web`, `dev:server`, `dev:desktop`, `dev:marketing` for one).
 - `pnpm typecheck`: typecheck every package.

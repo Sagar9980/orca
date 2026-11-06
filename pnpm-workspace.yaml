@@ -2,7 +2,10 @@ packages:
   - "apps/*"
   - "packages/*"
 
-# pnpm blocks dependency install scripts by default; esbuild needs its to fetch its native build.
+# Refuse to install on a Node or pnpm outside "engines" in package.json, instead of failing later in a confusing way.
+engineStrict: true
+
+# pnpm blocks dependency install scripts by default; esbuild needs one to fetch its native build.
 # Electron has no install script: it downloads its binary the first time it runs.
 allowBuilds:
   esbuild: true
