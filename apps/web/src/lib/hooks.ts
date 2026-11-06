@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { desktop } from "./desktop";
 
 export function readPref(key: string): string | null {
   try {
@@ -39,6 +40,7 @@ export function useTheme() {
   useEffect(() => {
     if (theme) document.documentElement.dataset.theme = theme;
     else delete document.documentElement.dataset.theme;
+    void desktop?.setTheme(theme ?? "system").catch(() => {});
   }, [theme]);
 
   const toggle = useCallback(() => {

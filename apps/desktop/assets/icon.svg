@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <!-- The Orca mark (apps/marketing/src/app/icon.svg) on the macOS icon grid: an 824px tile with room around it. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f2232"/>
+      <stop offset="1" stop-color="#08131c"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" stroke="#1b3345" stroke-width="3"/>
+  <g transform="translate(100 100) scale(25.75)">
+    <g transform="translate(4.5 3.5) scale(0.82)" stroke="#62d6ee" stroke-linecap="round">
+      <path d="M3 21.5c6.5-.6 10.6-6.6 12.4-18.3 1.7 1 2.9 3 2.9 6.4 0 6.2 2.6 9.9 6.7 11.9" stroke-width="2.6" stroke-linejoin="round"/>
+      <path d="M2 25.2c3-1.4 5.4-1.4 8 0s5 1.4 8 0 5.2-1.4 8 0" stroke-width="2" opacity=".6"/>
+    </g>
+  </g>
+</svg>

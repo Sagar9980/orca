@@ -19,6 +19,8 @@ export interface DesktopBridge {
   inspectFolder(folder: string): Promise<FolderInfo | null>;
   /** Only works on a folder picked with chooseFolder in this session. */
   initGit(folder: string): Promise<FolderInfo>;
+  /** Colors the window's own title bar and buttons to match the page. */
+  setTheme(theme: "light" | "dark" | "system"): Promise<void>;
   /** The run's events so far; none if it hasn't started in this app session. */
   runAttach(runId: string): Promise<RunEvent[]>;
   /** Starts a real agent run, unless it is already going. Returns its events so far. */

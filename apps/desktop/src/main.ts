@@ -1,4 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeTheme,
+  shell,
+  type IpcMainInvokeEvent,
+  type WebContents,
+} from "electron";
 import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -7,6 +16,30 @@ import { initRepo, inspectFolder, isDirectory } from "./folders";
 import { attachRun, commandRun, loadDevKey, startRun, stopAllRuns } from "./runs";
 
 const DEV_URL = process.env.ORCA_DEV_URL;
+const IS_MAC = process.platform === "darwin";
+
+/** The app icon, used for the dock in development and for windows on Windows and Linux. */
+const ICON = path.join(__dirname, "../assets/icon.png");
+
+/**
+ * The window draws its own title bar (`.titlebar` in apps/web/src/index.css) in Orca's colors instead of the
+ * system's. Keep these in step with --bg, --panel and --fg there, and the height with --tb.
+ */
+const TITLE_BAR_HEIGHT = 38;
+const CHROME = {
+  dark: { background: "#08131c", bar: "#0c1b27", symbols: "#e2edf3" },
+  light: { background: "#e9f0f4", bar: "#f4f8fa", symbols: "#0b2130" },
+};
+const chrome = () => CHROME[nativeTheme.shouldUseDarkColors ? "dark" : "light"];
+
+/** Recolors every window for the current theme. macOS draws its own traffic lights, so only the background. */
+function applyChrome() {
+  const { background, bar, symbols } = chrome();
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.setBackgroundColor(background);
+    if (!IS_MAC) win.setTitleBarOverlay({ color: bar, symbolColor: symbols, height: TITLE_BAR_HEIGHT });
+  }
+}
 
 /** Folders the user picked in the system dialog this session. Only these can be changed (git init). */
 const pickedFolders = new Set<string>();
@@ -96,6 +129,16 @@ function registerBridge() {
     }),
   );
 
+  // The page's theme: "light" or "dark" when the user picked one, "system" to follow the OS.
+  ipcMain.handle(
+    "orca:set-theme",
+    guard((_event, theme: unknown) => {
+      if (theme !== "light" && theme !== "dark" && theme !== "system") return;
+      nativeTheme.themeSource = theme;
+      applyChrome();
+    }),
+  );
+
   // Agent runs. Events go to every Orca window; each page keeps only its own run's.
   const broadcast = (event: unknown) => {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -123,7 +166,16 @@ function createWindow() {
     minWidth: 720,
     minHeight: 520,
     title: "Orca",
-    backgroundColor: "#08131c",
+    backgroundColor: chrome().background,
+    titleBarStyle: "hidden",
+    // macOS keeps its traffic lights, centered in the page's title bar; elsewhere the window buttons are drawn
+    // over it in Orca's colors.
+    ...(IS_MAC
+      ? { trafficLightPosition: { x: 14, y: (TITLE_BAR_HEIGHT - 12) / 2 } }
+      : {
+          titleBarOverlay: { color: chrome().bar, symbolColor: chrome().symbols, height: TITLE_BAR_HEIGHT },
+          icon: ICON,
+        }),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -165,6 +217,9 @@ app.on("before-quit", (event) => {
 });
 
 app.whenReady().then(() => {
+  // A packaged app gets its icon from the bundle; in development the dock would show Electron's.
+  if (IS_MAC && !app.isPackaged) app.dock?.setIcon(ICON);
+  nativeTheme.on("updated", applyChrome);
   registerBridge();
   createWindow();
 

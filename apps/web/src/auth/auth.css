@@ -2,7 +2,7 @@
    Layout: a deep-water story panel beside a quiet form column; stacks on phones. */
 
 /* ---------- Split layout ---------- */
-.auth { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); min-height: calc(100vh - 44px); max-width: 1320px; margin-inline: auto; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: var(--panel); }
+.auth { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); min-height: calc(100vh - 44px - var(--tb)); max-width: 1320px; margin-inline: auto; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: var(--panel); }
 .auth-story { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 32px; padding: 36px 40px; overflow: hidden; background-color: var(--bg); background-image: radial-gradient(var(--line) 1px, transparent 1.3px); background-size: 22px 22px; border-right: 1px solid var(--line); }
 .auth-brand { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 10px; font: 700 20px/1 var(--f-display); letter-spacing: -0.02em; color: var(--fg); text-decoration: none; }
 .auth-brand svg { width: 26px; height: 26px; color: var(--accent); }

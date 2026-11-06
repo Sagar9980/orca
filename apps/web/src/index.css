@@ -55,6 +55,13 @@
   color-scheme: light;
 }
 
+/* Desktop app: the window's title bar, drawn by the page so it matches the theme. The window can be dragged by it,
+   and the traffic lights (macOS) or window buttons (Windows, Linux) sit on it. Its height, --tb, and its colors
+   must match TITLE_BAR_HEIGHT and CHROME in apps/desktop/src/main.ts. */
+:root { --tb: 0px; }
+:root.is-desktop { --tb: 38px; }
+.titlebar { position: fixed; inset: 0 0 auto 0; z-index: 50; display: grid; place-items: center; height: var(--tb); background: var(--panel); border-bottom: 1px solid var(--line); color: var(--muted); font: 600 12.5px/1 var(--f-body); user-select: none; -webkit-app-region: drag; }
+
 * { box-sizing: border-box; }
 html, body { min-height: 100%; }
 body {
@@ -63,7 +70,7 @@ body {
   color: var(--fg);
   font: 14px/1.5 var(--f-body);
   padding-inline: 20px;
-  padding-block: 16px 28px;
+  padding-block: calc(16px + var(--tb)) 28px;
   background-image: radial-gradient(1200px 520px at 85% -10%, var(--ring), transparent 70%);
 }
 button, input { font: inherit; color: inherit; }
