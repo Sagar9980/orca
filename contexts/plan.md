@@ -102,15 +102,15 @@ app alongside the CLI, which stays as a quick way to debug the engine on its own
 
 ### Phase D: Live in the UI
 
-- [ ] Settings screen for the API key, stored with `safeStorage`. Until then the desktop app reads
-      `packages/engine/.env` in development.
+- [x] Settings screen for the API key, stored with `safeStorage` (Account page, `apps/desktop/src/apiKey.ts`). In
+      development `packages/engine/.env` still works when no key is saved.
 - [x] Run the engine in the desktop app (`apps/desktop/src/runs.ts`). IPC calls `orca:run-start`, `orca:run-attach`
       and `orca:run-command`, plus the `orca:run-event` channel. Same `fromOrca` guard as today.
 - [x] Turn node output into `RunEvent`s (`startRun` in `packages/engine/src/run.ts`). `DesktopRunSource` in
       `apps/web/src/run/` implements `RunSource`. A run only starts from its Start button, never by opening a page.
 - [x] Interrupts appear as `HumanCard`s, and the answer resumes the graph. Pause takes effect between turns.
 - [x] `ORCA_FAKE_MODEL=1` runs the real graph and gate on scripted model replies, so the UI can be tried for free.
-- [ ] Check it end to end in the app: a fake run, then one real Haiku run.
+- [x] Check it end to end in the app: a fake run, then one real Haiku run.
 
 **Done when:** typing an idea runs a real agent and the existing UI shows it live, with approvals working.
 
