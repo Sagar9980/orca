@@ -65,6 +65,8 @@ export type WorkerStateType = typeof WorkerState.State;
 export interface WorkerOptions {
   /** Project folder the tools are confined to. */
   root: string;
+  /** The user's Anthropic key; falls back to ANTHROPIC_API_KEY. Ignored when `client` is passed. */
+  apiKey?: string;
   client?: Anthropic;
   /** One of `MODELS` in models.ts. Defaults to Haiku while developing. */
   model?: string;
@@ -95,7 +97,8 @@ export function buildWorker({
   maxRetries = 2,
   maxFailedRounds = 3,
   maxRepeats = 3,
-  client = new Anthropic({ maxRetries }),
+  apiKey,
+  client = new Anthropic({ apiKey, maxRetries }),
   checkpointer = new MemorySaver(),
 }: WorkerOptions) {
   // Throws for a model without known prices, since its budget couldn't be enforced.
