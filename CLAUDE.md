@@ -28,8 +28,8 @@ pnpm monorepo, TypeScript everywhere.
 - `apps/server`: Fastify + Drizzle/Postgres + Better Auth. Projects, machines, project folders, runs.
 - `apps/desktop`: Electron. Picks local folders and runs the engine in the main process (`src/runs.ts`); the page
   reaches it only through `src/preload.ts`, and every IPC call is checked with `fromOrca` in `src/main.ts`. In
-  development it reads the key from `packages/engine/.env`; `ORCA_FAKE_MODEL=1 pnpm dev` runs agents on scripted model
-  replies for free.
+  development it reads the key from `packages/engine/.env`; `pnpm dev:fake` (`ORCA_FAKE_MODEL=1`) runs agents on
+  scripted model replies for free.
 - `apps/marketing`: Next.js landing page. Read `apps/marketing/AGENTS.md` before editing it.
 
 ## Commands

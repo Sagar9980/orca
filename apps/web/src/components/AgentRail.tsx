@@ -63,7 +63,6 @@ export function AgentRail({ state, selectedId, onSelect }: Props) {
             </span>
           </button>
         )}
-        {state.run.summary && <p className="text-[13px] text-muted-foreground">{state.run.summary}</p>}
       </section>
 
       <div className="flex items-baseline justify-between px-1">
