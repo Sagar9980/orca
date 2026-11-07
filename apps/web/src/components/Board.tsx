@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { HUMAN, teamOf, type Message, type MessageKind, type RunState } from "@orca/shared";
 import { edgeKey, participantName } from "../lib/labels";
 import { usePrefersReducedMotion } from "../lib/hooks";
+import { KIND_TONE } from "../lib/tones";
+import { cn } from "../lib/utils";
 import { SubAgentCard, type CardCommon } from "./SubAgentCard";
 import { HumanCard } from "./HumanCard";
 
@@ -185,7 +187,7 @@ export function Board({ state, agentId, messages, focusId, onToggleFocus, paused
       const fx = fxRef.current;
       if (!fx) return done();
       const g = document.createElementNS(SVG_NS, "g");
-      g.setAttribute("class", `pk k-${kind}`);
+      g.setAttribute("class", `pk ${KIND_TONE[kind]}`);
       const parts = PACKET_PARTS.map(({ cls, r }) => {
         const c = document.createElementNS(SVG_NS, "circle");
         c.setAttribute("class", cls);
@@ -295,20 +297,27 @@ export function Board({ state, agentId, messages, focusId, onToggleFocus, paused
   return (
     <section
       ref={boardRef}
-      className={focusId ? "board focusing" : "board"}
+      className={cn(
+        "board dot-grid @container relative overflow-hidden rounded-[20px] border bg-panel px-[30px] py-[34px] max-[920px]:px-4 max-[920px]:py-6",
+        focusId && "focusing",
+      )}
       aria-label="Sub-agent board"
     >
-      <svg className="wires" aria-hidden="true">
+      <svg className="pointer-events-none absolute inset-0 z-0 size-full overflow-visible" aria-hidden="true">
         {edges.map((key) => {
           const [a, b] = key.split("|");
           const cls = ["wire"];
-          if (live[key]) cls.push("live", `k-${live[key]}`);
+          if (live[key]) cls.push("live", KIND_TONE[live[key]]);
           if (isWaiting(a, b)) cls.push("wait");
           if (focusId && (a === focusId || b === focusId)) cls.push("hl");
           return <path key={key} ref={pathRef(key)} d={geo[key] ?? ""} className={cls.join(" ")} />;
         })}
       </svg>
-      <div className="grid" style={{ "--cols": ids.length <= 4 ? 2 : 3 } as React.CSSProperties}>
+      {/* Cards share a row --cols at a time, two on a narrow board and one on a very narrow one. */}
+      <div
+        className="relative z-1 flex flex-wrap justify-center gap-x-11 gap-y-[46px] @max-[440px]:gap-[30px] [&>*]:min-w-0 [&>*]:flex-[0_1_calc((100%-(var(--cols)-1)*44px)/var(--cols))] @max-[700px]:[&>*]:basis-[calc((100%-44px)/2)] @max-[440px]:[&>*]:basis-full"
+        style={{ "--cols": ids.length <= 4 ? 2 : 3 } as React.CSSProperties}
+      >
         {ids.map((id) => {
           const common: CardCommon = {
             sending: Boolean(sending[id]),
@@ -332,7 +341,7 @@ export function Board({ state, agentId, messages, focusId, onToggleFocus, paused
           return sub ? <SubAgentCard key={id} {...common} sub={sub} /> : null;
         })}
       </div>
-      <svg className="fx" ref={fxRef} aria-hidden="true" />
+      <svg className="pointer-events-none absolute inset-0 z-3 size-full overflow-visible" ref={fxRef} aria-hidden="true" />
     </section>
   );
 }

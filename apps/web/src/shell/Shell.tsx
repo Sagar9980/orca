@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FolderInfo, Project } from "@orca/shared";
 import { Notice } from "../auth/ui";
+import { Boot } from "../components/Boot";
+import { Button } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import { ApiError } from "../lib/api";
 import { bridgeError, desktop } from "../lib/desktop";
 import { readPref, writePref } from "../lib/hooks";
@@ -148,31 +151,50 @@ export function Shell({ route, user, onToggleTheme }: Props) {
 
   let screen;
   if (route.view === "home") screen = <HomeScreen />;
-  else if (!loaded) screen = <div className="boot">Loading projects…</div>;
+  else if (!loaded) screen = <Boot className="min-h-0 flex-1">Loading projects…</Boot>;
   else if (!project || (route.view === "run" && !run)) screen = <Missing what={project ? "run" : "project"} />;
   else if (route.view === "run" && run) screen = <Workspace key={run.id} project={project} run={run} />;
   else screen = <ProjectScreen key={project.id} project={project} />;
 
-  const classes = ["app-shell", rail && "is-rail", drawer && "is-drawer"].filter(Boolean).join(" ");
-
   return (
     <ShellContext.Provider value={actions}>
-      <div className={classes}>
-        <div className="sb-col">
+      <div
+        className={cn(
+          "fixed inset-x-0 top-tb bottom-0 grid grid-cols-[264px_minmax(0,1fr)] bg-background transition-[grid-template-columns] duration-200 max-[780px]:grid-cols-[minmax(0,1fr)] motion-reduce:transition-none",
+          rail && "grid-cols-[60px_minmax(0,1fr)]",
+        )}
+      >
+        {/* On phones the sidebar is a drawer that slides in over the page. */}
+        <div
+          className={cn(
+            "relative z-5 min-w-0 max-[780px]:fixed max-[780px]:top-tb max-[780px]:bottom-0 max-[780px]:left-0 max-[780px]:z-45 max-[780px]:w-[min(290px,86vw)] max-[780px]:-translate-x-[102%] max-[780px]:transition-transform max-[780px]:duration-200 motion-reduce:transition-none",
+            drawer && "max-[780px]:translate-x-0 max-[780px]:shadow-[18px_0_40px_-18px_rgba(0,0,0,0.6)]",
+          )}
+        >
           <Sidebar
             route={route}
             user={user}
+            folded={rail}
             onToggleTheme={onToggleTheme}
             pin={inRun && !narrow ? { pinned, toggle: togglePin } : null}
           />
         </div>
-        <div className="sb-scrim" onClick={() => setDrawer(false)} aria-hidden="true" />
-        <main className="sh-main">{screen}</main>
+        {drawer && narrow && (
+          <div
+            className="fixed inset-x-0 top-tb bottom-0 z-44 bg-background/60"
+            onClick={() => setDrawer(false)}
+            aria-hidden="true"
+          />
+        )}
+        <main className="relative flex h-full min-w-0 flex-col overflow-hidden">{screen}</main>
       </div>
 
       {gitAsk && <GitDialog folder={gitAsk.folder} onAnswer={gitAsk.answer} />}
       {toast && (
-        <div className="toast" key={toast.id}>
+        <div
+          className="fixed bottom-[calc(24px+env(safe-area-inset-bottom,0px))] left-1/2 z-20 w-[min(460px,calc(100%-32px))] -translate-x-1/2 rounded-lg bg-card shadow-[0_18px_40px_-16px_rgba(0,0,0,0.5)]"
+          key={toast.id}
+        >
           <Notice tone={toast.tone}>{toast.text}</Notice>
         </div>
       )}
@@ -184,10 +206,10 @@ function Missing({ what }: { what: "project" | "run" }) {
   return (
     <>
       <MobileBar />
-      <div className="boot">
+      <Boot className="min-h-0 flex-1">
         <p>{what === "project" ? "There's no project at this address." : "This run doesn't exist anymore."}</p>
         <Link to="/">Go to Orca</Link>
-      </div>
+      </Boot>
     </>
   );
 }
@@ -202,21 +224,35 @@ function GitDialog({ folder, onAnswer }: { folder: FolderInfo; onAnswer: (ok: bo
   }, [onAnswer]);
 
   return (
-    <div className="dlg-scrim" onClick={(e) => e.target === e.currentTarget && onAnswer(false)}>
-      <div className="dlg" role="alertdialog" aria-modal="true" aria-labelledby="git-title" aria-describedby="git-body">
-        <h2 id="git-title">Set up git in {folder.name}?</h2>
-        <p id="git-body">
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-background/65 p-4"
+      onClick={(e) => e.target === e.currentTarget && onAnswer(false)}
+    >
+      <div
+        className="flex w-[min(460px,100%)] flex-col gap-3 rounded-2xl border border-border-strong bg-panel p-[22px] shadow-[0_30px_70px_-20px_rgba(0,0,0,0.6)]"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="git-title"
+        aria-describedby="git-body"
+      >
+        <h2 id="git-title" className="font-display text-[19px] leading-[1.2] font-bold wrap-anywhere">
+          Set up git in {folder.name}?
+        </h2>
+        <p id="git-body" className="text-[13.5px] leading-[1.55] text-muted-foreground">
           This folder isn't a git repository. Orca's agents keep their changes on git branches, so the project needs
-          git. Orca will run <code>git init</code> here and change nothing else.
+          git. Orca will run <code className="font-mono text-[12.5px] text-foreground">git init</code> here and change
+          nothing else.
         </p>
-        <p className="dlg-path mono">{folder.path}</p>
-        <div className="dlg-actions">
-          <button className="btn" type="button" onClick={() => onAnswer(false)}>
+        <p className="rounded-md bg-background px-2.5 py-2 font-mono text-xs wrap-anywhere text-muted-foreground">
+          {folder.path}
+        </p>
+        <div className="mt-1 flex justify-end gap-2">
+          <Button variant="outline" className="h-9" onClick={() => onAnswer(false)}>
             Cancel
-          </button>
-          <button ref={confirmRef} className="btn-primary" type="button" onClick={() => onAnswer(true)}>
+          </Button>
+          <Button ref={confirmRef} size="lg" className="h-9" onClick={() => onAnswer(true)}>
             Set up git
-          </button>
+          </Button>
         </div>
       </div>
     </div>

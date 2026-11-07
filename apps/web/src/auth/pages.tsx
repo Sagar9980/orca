@@ -1,7 +1,8 @@
 import { useEffect, useState, type SyntheticEvent } from "react";
 import { clearQuery, Link, navigate, useLocation } from "../router";
 import { appUrl, authClient, describeError } from "./client";
-import { AuthLayout, Field, Notice, PasswordField, SocialButtons, Submit, useAuthConfig } from "./ui";
+import { Button, buttonVariants } from "../components/ui/button";
+import { AuthLayout, authSteps, Field, formStack, Notice, PasswordField, SocialButtons, Submit, useAuthConfig } from "./ui";
 
 /** Where verification links send people once their email is confirmed. */
 const VERIFIED_URL = () => appUrl("/?verified=1");
@@ -64,10 +65,10 @@ export function SignIn() {
         </Notice>
       )}
       <SocialButtons onError={setError} />
-      <form className="auth-form" onSubmit={submit} noValidate>
+      <form className={formStack} onSubmit={submit} noValidate>
         <Field label="Email" id="signin-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <PasswordField label="Password" id="signin-password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-        <div className="auth-row">
+        <div className="-mt-1.5 flex justify-end text-[13px] [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-3">
           <Link to={`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`}>Forgot password?</Link>
         </div>
         <Submit busy={busy} disabled={!email || !password}>
@@ -112,7 +113,7 @@ export function SignUp() {
     >
       {error && <Notice tone="error">{error}</Notice>}
       <SocialButtons onError={setError} />
-      <form className="auth-form" onSubmit={submit} noValidate>
+      <form className={formStack} onSubmit={submit} noValidate>
         <Field label="Name" id="signup-name" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} />
         <Field label="Email" id="signup-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <PasswordField
@@ -137,7 +138,7 @@ function PasswordHint({ password, min }: { password: string; min: number }) {
   const left = min - password.length;
   if (!password) return <>At least {min} characters. A short phrase works well.</>;
   if (left > 0) return <>{left} more {left === 1 ? "character" : "characters"} to go.</>;
-  return <span className="hint-ok">Long enough.</span>;
+  return <span className="text-success">Long enough.</span>;
 }
 
 /** After sign-up: tells the person to check their inbox, with a rate-friendly resend. */
@@ -172,18 +173,18 @@ function CheckEmail({ email, onChangeEmail }: { email: string; onChangeEmail: ()
       footer={
         <>
           Wrong address?{" "}
-          <button type="button" className="linkbtn" onClick={onChangeEmail}>
+          <Button variant="link" onClick={onChangeEmail}>
             Use a different email
-          </button>
+          </Button>
         </>
       }
     >
       {note && <Notice tone={note.tone}>{note.text}</Notice>}
-      <div className="auth-steps">
+      <div className={authSteps}>
         <p>The link works for 1 hour. If you can't find the email, check your spam folder.</p>
-        <button type="button" className="btn-secondary" onClick={resend} disabled={cooldown > 0}>
+        <Button variant="secondary" size="lg" className="self-start" onClick={resend} disabled={cooldown > 0}>
           {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend the email"}
-        </button>
+        </Button>
       </div>
     </AuthLayout>
   );
@@ -222,13 +223,13 @@ export function ForgotPassword() {
     >
       {error && <Notice tone="error">{error}</Notice>}
       {sent ? (
-        <div className="auth-steps">
-          <button type="button" className="btn-secondary" onClick={() => setSent(false)}>
+        <div className={authSteps}>
+          <Button variant="secondary" size="lg" className="self-start" onClick={() => setSent(false)}>
             Send to a different email
-          </button>
+          </Button>
         </div>
       ) : (
-        <form className="auth-form" onSubmit={submit} noValidate>
+        <form className={formStack} onSubmit={submit} noValidate>
           <Field label="Email" id="forgot-email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           <Submit busy={busy} disabled={!email.trim()}>
             Send reset link
@@ -256,8 +257,8 @@ export function ResetPassword() {
   if (!token || linkError) {
     return (
       <AuthLayout title="This link doesn't work" lede="Reset links expire after 1 hour and work only once." footer={<Link to="/sign-in">Back to sign in</Link>}>
-        <div className="auth-steps">
-          <Link to="/forgot-password" className="btn-primary">
+        <div className={authSteps}>
+          <Link to="/forgot-password" className={buttonVariants({ size: "lg" })}>
             Request a new link
           </Link>
         </div>
@@ -268,8 +269,8 @@ export function ResetPassword() {
   if (done) {
     return (
       <AuthLayout title="Password updated" lede="We signed you out everywhere, so sign in again with your new password.">
-        <div className="auth-steps">
-          <Link to="/sign-in" className="btn-primary">
+        <div className={authSteps}>
+          <Link to="/sign-in" className={buttonVariants({ size: "lg" })}>
             Sign in
           </Link>
         </div>
@@ -292,7 +293,7 @@ export function ResetPassword() {
   return (
     <AuthLayout title="Choose a new password" lede="You'll be signed out on every device, then you can sign in with the new one.">
       {error && <Notice tone="error">{error}</Notice>}
-      <form className="auth-form" onSubmit={submit} noValidate>
+      <form className={formStack} onSubmit={submit} noValidate>
         <PasswordField
           label="New password"
           id="reset-password"

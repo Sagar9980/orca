@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useState, type SyntheticEvent, type ReactNode } from "react";
 import { OrcaMark } from "../components/icons";
+import { Badge } from "../components/ui/badge";
+import { Button, buttonVariants } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import { clearQuery, Link, navigate, useLocation } from "../router";
 import { appUrl, authClient, describeError, type SocialProvider } from "./client";
 import { Field, Notice, PasswordField, ProviderIcon, Submit, useAuthConfig } from "./ui";
 
 type SessionData = NonNullable<ReturnType<typeof authClient.useSession>["data"]>;
 type Note = { tone: "error" | "info" | "success"; text: ReactNode } | null;
+
+/** A form inside an account section. */
+const form = "flex max-w-[440px] flex-col gap-3.5";
+const list = "rounded-xl border bg-card [&>li]:flex [&>li]:items-center [&>li]:justify-between [&>li]:gap-3 [&>li]:px-3.5 [&>li]:py-3 [&>li]:text-sm [&>li+li]:border-t";
+const item = "inline-flex min-w-0 items-center gap-2.5 [&_svg]:size-[17px] [&_svg]:shrink-0";
+const check = "flex cursor-pointer items-start gap-[9px] text-[13.5px] text-muted-foreground [&_input]:mt-[3px] [&_input]:accent-primary";
+const tag = "ml-2 px-[7px] py-[3px] align-[2px]";
 
 const PROVIDER_LABEL: Record<string, string> = { credential: "Email and password", github: "GitHub", google: "Google" };
 
@@ -34,27 +44,32 @@ export function Account({ session }: { session: SessionData }) {
   };
 
   return (
-    <div className="account">
-      <header className="account-bar">
-        <Link to="/" className="brand">
+    <div className="mx-auto max-w-[980px]">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+        <Link
+          to="/"
+          className="flex items-center gap-2.5 font-display text-xl leading-none font-bold tracking-[-0.02em] text-foreground no-underline [&_svg]:size-[26px] [&_svg]:text-primary"
+        >
           <OrcaMark />
           Orca
         </Link>
-        <div className="ctrls">
-          <Link to="/" className="btn">
+        <div className="flex flex-wrap gap-2">
+          <Link to="/" className={buttonVariants({ variant: "outline" })}>
             Back to console
           </Link>
-          <button type="button" className="btn" onClick={signOut}>
+          <Button variant="outline" onClick={signOut}>
             Sign out
-          </button>
+          </Button>
         </div>
       </header>
 
-      <main className="account-main">
-        <div className="account-head">
+      <main className="flex flex-col gap-[18px] py-7">
+        <div>
           <span className="eyebrow">Account</span>
-          <h1>{session.user.name || session.user.email}</h1>
-          <p>{session.user.email}</p>
+          <h1 className="mt-1.5 mb-1 font-display text-[clamp(28px,3vw,38px)] leading-[1.05] font-[750] tracking-[-0.03em] wrap-anywhere">
+            {session.user.name || session.user.email}
+          </h1>
+          <p className="wrap-anywhere text-muted-foreground">{session.user.email}</p>
         </div>
         {banner && <Notice tone={banner.tone}>{banner.text}</Notice>}
 
@@ -71,12 +86,17 @@ export function Account({ session }: { session: SessionData }) {
 
 function Section({ title, description, children, danger }: { title: string; description: ReactNode; children: ReactNode; danger?: boolean }) {
   return (
-    <section className={danger ? "acct-section acct-danger" : "acct-section"}>
-      <div className="acct-intro">
-        <h2>{title}</h2>
-        <p>{description}</p>
+    <section
+      className={cn(
+        "grid grid-cols-1 gap-x-10 gap-y-5 rounded-2xl border bg-panel p-[18px] min-[861px]:grid-cols-[minmax(0,280px)_minmax(0,1fr)] min-[861px]:p-6",
+        danger && "border-[color-mix(in_oklab,var(--color-destructive)_35%,var(--color-border))]",
+      )}
+    >
+      <div>
+        <h2 className="mb-1.5 font-display text-[17px] leading-[1.2] font-bold">{title}</h2>
+        <p className="text-[13.5px] leading-[1.55] wrap-anywhere text-muted-foreground">{description}</p>
       </div>
-      <div className="acct-body">{children}</div>
+      <div className="min-w-0">{children}</div>
     </section>
   );
 }
@@ -97,10 +117,10 @@ function ProfileSection({ session }: { session: SessionData }) {
 
   return (
     <Section title="Profile" description="The name Orca uses when it talks to you.">
-      <form className="acct-form" onSubmit={submit}>
+      <form className={form} onSubmit={submit}>
         {note && <Notice tone={note.tone}>{note.text}</Notice>}
         <Field label="Name" id="acct-name" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} />
-        <Submit busy={busy} disabled={!name.trim() || name.trim() === session.user.name}>
+        <Submit className="self-start" busy={busy} disabled={!name.trim() || name.trim() === session.user.name}>
           Save name
         </Submit>
       </form>
@@ -138,14 +158,22 @@ function EmailSection({ session }: { session: SessionData }) {
       description={
         <>
           You sign in with <strong>{session.user.email}</strong>
-          {session.user.emailVerified ? <span className="tag tag-ok">Verified</span> : <span className="tag">Not verified</span>}
+          {session.user.emailVerified ? (
+            <Badge tone="tone-success" className={tag}>
+              Verified
+            </Badge>
+          ) : (
+            <Badge tone="tone-muted" className={tag}>
+              Not verified
+            </Badge>
+          )}
         </>
       }
     >
-      <form className="acct-form" onSubmit={submit}>
+      <form className={form} onSubmit={submit}>
         {note && <Notice tone={note.tone}>{note.text}</Notice>}
         <Field label="New email" id="acct-email" type="email" autoComplete="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-        <Submit busy={busy} disabled={!newEmail.trim() || newEmail.trim().toLowerCase() === session.user.email.toLowerCase()}>
+        <Submit className="self-start" busy={busy} disabled={!newEmail.trim() || newEmail.trim().toLowerCase() === session.user.email.toLowerCase()}>
           Change email
         </Submit>
       </form>
@@ -164,9 +192,12 @@ function PasswordSection({ hasPassword, email }: { hasPassword: boolean; email: 
   if (!hasPassword) {
     return (
       <Section title="Password" description="You sign in with a connected account, so you don't have a password yet.">
-        <div className="acct-form">
-          <p className="muted">To add one, we'll email you a link to set it.</p>
-          <Link to={`/forgot-password?email=${encodeURIComponent(email)}`} className="btn-secondary">
+        <div className={form}>
+          <p className="text-muted-foreground">To add one, we'll email you a link to set it.</p>
+          <Link
+            to={`/forgot-password?email=${encodeURIComponent(email)}`}
+            className={buttonVariants({ variant: "secondary", size: "lg", className: "self-start" })}
+          >
             Set a password
           </Link>
         </div>
@@ -189,15 +220,15 @@ function PasswordSection({ hasPassword, email }: { hasPassword: boolean; email: 
 
   return (
     <Section title="Password" description={`At least ${min} characters. We email you whenever it changes.`}>
-      <form className="acct-form" onSubmit={submit}>
+      <form className={form} onSubmit={submit}>
         {note && <Notice tone={note.tone}>{note.text}</Notice>}
         <PasswordField label="Current password" id="acct-current" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
         <PasswordField label="New password" id="acct-new" autoComplete="new-password" required value={next} onChange={(e) => setNext(e.target.value)} />
-        <label className="check">
+        <label className={check}>
           <input type="checkbox" checked={signOutOthers} onChange={(e) => setSignOutOthers(e.target.checked)} />
           Sign out my other devices
         </label>
-        <Submit busy={busy} disabled={!current || !next}>
+        <Submit className="self-start" busy={busy} disabled={!current || !next}>
           Change password
         </Submit>
       </form>
@@ -235,34 +266,34 @@ function MethodsSection({ accounts, reload }: { accounts: { id: string; provider
 
   return (
     <Section title="Sign-in methods" description="Ways you can sign in to this account.">
-      <div className="acct-form">
+      <div className={form}>
         {note && <Notice tone={note.tone}>{note.text}</Notice>}
         {accounts === null ? (
-          <p className="muted">Loading…</p>
+          <p className="text-muted-foreground">Loading…</p>
         ) : (
-          <ul className="acct-list">
+          <ul className={list}>
             {accounts.map((a) => (
               <li key={a.id}>
-                <span className="acct-item">
+                <span className={item}>
                   {a.providerId !== "credential" && <ProviderIcon provider={a.providerId as SocialProvider} />}
                   {PROVIDER_LABEL[a.providerId] ?? a.providerId}
                 </span>
                 {accounts.length > 1 && (
-                  <button type="button" className="linkbtn" onClick={() => disconnect(a.id, a.providerId)} disabled={busy !== null}>
+                  <Button variant="link" onClick={() => disconnect(a.id, a.providerId)} disabled={busy !== null}>
                     Disconnect
-                  </button>
+                  </Button>
                 )}
               </li>
             ))}
             {available.map((p) => (
               <li key={p}>
-                <span className="acct-item muted">
+                <span className={cn(item, "text-muted-foreground")}>
                   <ProviderIcon provider={p} />
                   {PROVIDER_LABEL[p]}
                 </span>
-                <button type="button" className="btn-secondary btn-small" onClick={() => connect(p)} disabled={busy !== null}>
+                <Button variant="secondary" size="sm" onClick={() => connect(p)} disabled={busy !== null}>
                   Connect
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -320,37 +351,41 @@ function SessionsSection({ currentId }: { currentId: string }) {
 
   return (
     <Section title="Devices" description="Where you're signed in right now.">
-      <div className="acct-form">
+      <div className={form}>
         {note && <Notice tone={note.tone}>{note.text}</Notice>}
         {sessions === null ? (
-          <p className="muted">Loading…</p>
+          <p className="text-muted-foreground">Loading…</p>
         ) : (
-          <ul className="acct-list">
+          <ul className={list}>
             {sessions.map((s) => (
               <li key={s.id}>
-                <span className="acct-item acct-device">
+                <span className={cn(item, "flex-col items-start gap-[3px]")}>
                   <span>
                     {describeDevice(s.userAgent)}
-                    {s.id === currentId && <span className="tag tag-ok">This device</span>}
+                    {s.id === currentId && (
+                      <Badge tone="tone-success" className={tag}>
+                        This device
+                      </Badge>
+                    )}
                   </span>
-                  <span className="muted mono">
+                  <span className="font-mono text-xs text-muted-foreground">
                     Since {new Date(s.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                     {s.ipAddress ? ` · ${s.ipAddress}` : ""}
                   </span>
                 </span>
                 {s.id !== currentId && (
-                  <button type="button" className="linkbtn" onClick={() => revoke(s.token)} disabled={busy}>
+                  <Button variant="link" onClick={() => revoke(s.token)} disabled={busy}>
                     Sign out
-                  </button>
+                  </Button>
                 )}
               </li>
             ))}
           </ul>
         )}
         {others > 0 && (
-          <button type="button" className="btn-secondary" onClick={revokeOthers} disabled={busy}>
+          <Button variant="secondary" size="lg" className="self-start" onClick={revokeOthers} disabled={busy}>
             Sign out of {others} other {others === 1 ? "device" : "devices"}
-          </button>
+          </Button>
         )}
       </div>
     </Section>
@@ -376,27 +411,27 @@ function DeleteSection() {
 
   return (
     <Section title="Delete account" description="Removes your account and everything in it. This can't be undone." danger>
-      <div className="acct-form">
+      <div className={form}>
         {note && <Notice tone={note.tone}>{note.text}</Notice>}
         {confirming ? (
-          <form className="acct-form" onSubmit={submit}>
-            <label className="check">
+          <form className={form} onSubmit={submit}>
+            <label className={check}>
               <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
               I understand my runs and settings will be deleted for good
             </label>
-            <div className="acct-actions">
-              <Submit busy={busy} disabled={!understood} className="btn-danger">
+            <div className="flex flex-wrap gap-2.5">
+              <Submit busy={busy} disabled={!understood} variant="destructive">
                 Email me a deletion link
               </Submit>
-              <button type="button" className="btn-secondary" onClick={() => setConfirming(false)}>
+              <Button variant="secondary" size="lg" onClick={() => setConfirming(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         ) : (
-          <button type="button" className="btn-secondary btn-danger-outline" onClick={() => setConfirming(true)}>
+          <Button variant="destructive-outline" size="lg" className="self-start" onClick={() => setConfirming(true)}>
             Delete my account…
-          </button>
+          </Button>
         )}
       </div>
     </Section>

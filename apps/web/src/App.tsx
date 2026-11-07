@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ComponentType } from "react";
 import { authClient } from "./auth/client";
 import { Account } from "./auth/Account";
+import { Boot } from "./components/Boot";
 import { ForgotPassword, Goodbye, ResetPassword, SignIn, SignUp } from "./auth/pages";
 import { useTheme } from "./lib/hooks";
 import { resetProjects } from "./projects/store";
@@ -54,12 +55,12 @@ export function App() {
   const known = Public || GuestOnly || route || path === "/account";
 
   if (Public) return <Public />;
-  if (isPending && !checked.current) return <div className="boot">Starting Orca…</div>;
+  if (isPending && !checked.current) return <Boot>Starting Orca…</Boot>;
   if (error && !session) {
     return (
-      <div className="boot">
+      <Boot>
         <p>Can't reach the Orca server. Check that it's running, then reload.</p>
-      </div>
+      </Boot>
     );
   }
   if (!known) return <NotFound />;
@@ -76,14 +77,14 @@ export function App() {
 
 function Redirect({ to }: { to: string }) {
   useEffect(() => navigate(to, { replace: true }), [to]);
-  return <div className="boot">Starting Orca…</div>;
+  return <Boot>Starting Orca…</Boot>;
 }
 
 function NotFound() {
   return (
-    <div className="boot">
+    <Boot>
       <p>There's nothing at this address.</p>
       <Link to="/">Go to Orca</Link>
-    </div>
+    </Boot>
   );
 }
