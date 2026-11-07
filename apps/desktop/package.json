@@ -5,6 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "pnpm --filter @orca/shared --filter @orca/engine build && tsc -p tsconfig.json && wait-on tcp:5173 && cross-env ORCA_DEV_URL=http://localhost:5173 electron .",
+    "dev:fake": "cross-env ORCA_FAKE_MODEL=1 pnpm dev",
     "build": "tsc -p tsconfig.json",
     "start": "electron .",
     "typecheck": "pnpm --filter @orca/engine build && tsc -p tsconfig.json --noEmit"

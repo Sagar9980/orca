@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm build:shared && concurrently -n shared,server,web,desktop -c gray,blue,green,magenta \"pnpm --filter @orca/shared dev\" \"pnpm --filter @orca/server dev\" \"pnpm --filter @orca/web dev\" \"pnpm --filter @orca/desktop dev\"",
+    "dev:fake": "pnpm build:shared && concurrently -n shared,server,web,desktop -c gray,blue,green,magenta \"pnpm --filter @orca/shared dev\" \"pnpm --filter @orca/server dev\" \"pnpm --filter @orca/web dev\" \"pnpm --filter @orca/desktop dev:fake\"",
     "dev:web": "pnpm build:shared && pnpm --filter @orca/web dev",
     "dev:server": "pnpm build:shared && pnpm --filter @orca/server dev",
     "dev:desktop": "pnpm --filter @orca/desktop dev",
