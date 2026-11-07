@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { keyStatus, removeKey, saveKey } from "./apiKey";
 import { initRepo, inspectFolder, isDirectory } from "./folders";
 import { attachRun, commandRun, loadDevKey, startRun, stopAllRuns } from "./runs";
 
@@ -137,6 +138,20 @@ function registerBridge() {
       nativeTheme.themeSource = theme;
       applyChrome();
     }),
+  );
+
+  // The Anthropic key. The page can set or remove it, but only ever reads back its last four characters.
+  ipcMain.handle(
+    "orca:key-status",
+    guard(() => keyStatus()),
+  );
+  ipcMain.handle(
+    "orca:key-save",
+    guard((_event, key: unknown) => saveKey(key)),
+  );
+  ipcMain.handle(
+    "orca:key-remove",
+    guard(() => removeKey()),
   );
 
   // Agent runs. Events go to every Orca window; each page keeps only its own run's.

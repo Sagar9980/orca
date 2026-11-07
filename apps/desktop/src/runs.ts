@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ClientCommand, RunEvent } from "@orca/shared" with { "resolution-mode": "import" };
 import type { RunHandle } from "@orca/engine" with { "resolution-mode": "import" };
+import { apiKey } from "./apiKey";
 import { isDirectory } from "./folders";
 
 // Runs the agent engine in the main process, next to the project folders. The page only starts runs, sends
@@ -16,7 +17,7 @@ const FAKE_MODEL = process.env.ORCA_FAKE_MODEL === "1";
 // This package is CommonJS and the engine is ESM, so it is loaded with import().
 const engine = () => import("@orca/engine");
 
-/** In development the key comes from packages/engine/.env, like the CLI. A settings screen replaces this. */
+/** In development the key can also come from packages/engine/.env, like the CLI; a key saved in Account wins. */
 export function loadDevKey() {
   const file = path.join(__dirname, "../../../packages/engine/.env");
   if (!process.env.ANTHROPIC_API_KEY && existsSync(file)) process.loadEnvFile(file);
@@ -60,9 +61,8 @@ export async function startRun(input: unknown, broadcast: (event: RunEvent) => v
   const existing = runs.get(runId);
   if (existing) return existing.events();
   if (!(await isDirectory(folder))) throw new Error("The project folder isn't on this computer.");
-  if (!FAKE_MODEL && !process.env.ANTHROPIC_API_KEY) {
-    throw new Error("No Anthropic API key. In development, put ANTHROPIC_API_KEY in packages/engine/.env.");
-  }
+  const key = await apiKey();
+  if (!FAKE_MODEL && !key) throw new Error("Add your Anthropic API key in Account settings to start a run.");
 
   const { fakeClient, startRun } = await engine();
   const handle = startRun({
@@ -71,7 +71,7 @@ export async function startRun(input: unknown, broadcast: (event: RunEvent) => v
     project: folder,
     branch,
     maxUsd: budgetUsd,
-    ...(FAKE_MODEL ? { client: fakeClient() } : {}),
+    ...(FAKE_MODEL ? { client: fakeClient() } : key ? { apiKey: key } : {}),
     onEvent: broadcast,
   });
   runs.set(runId, handle);
