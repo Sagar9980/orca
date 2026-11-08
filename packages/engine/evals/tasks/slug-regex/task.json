@@ -1,0 +1,6 @@
+{
+  "about": "One missing regex flag. The easiest task; a model that fails it is broken.",
+  "prompt": "The tests fail. Fix the bug so `npm test` passes.",
+  "check": "npm test",
+  "protect": ["package.json", "test"]
+}

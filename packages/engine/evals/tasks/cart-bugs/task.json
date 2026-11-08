@@ -1,0 +1,6 @@
+{
+  "about": "Three small bugs in one file; the failing tests point at each.",
+  "prompt": "The tests fail. Fix the bugs so `npm test` passes.",
+  "check": "npm test",
+  "protect": ["package.json", "test"]
+}

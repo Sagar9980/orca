@@ -1,0 +1,6 @@
+{
+  "about": "A small feature from a written spec. The visible tests cover two cases; hidden tests cover the rest of the spec.",
+  "prompt": "Implement `parseDuration` in src/duration.js. It takes a string such as \"1h30m\", \"45s\", \"2h\" or \"1h 5m 10s\" and returns the total number of seconds. The units are h, m and s; each may appear at most once, in that order, with optional spaces between the parts. Anything else, such as an empty string, a number without a unit, an unknown unit, or units repeated or out of order, throws a RangeError. Make sure `npm test` passes.",
+  "check": "npm test",
+  "protect": ["package.json", "test"]
+}

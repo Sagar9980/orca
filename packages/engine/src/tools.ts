@@ -129,46 +129,57 @@ const handlers: { [K in ToolName]: (root: string, input: z.infer<(typeof schemas
     return `Edited ${rel}`;
   },
 
-  run_command(root, { command }) {
-    return new Promise((resolve) => {
-      // Its own process group, so bash and everything it starts can be killed together. Node's `timeout` signals
-      // only bash, and anything left running keeps the output pipes open, so "close" would never fire.
-      const child = spawn("bash", ["-c", command], { cwd: root, env: safeEnv(), detached: true });
-      const group = child.pid;
-      if (group) trackGroup(group);
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        if (group) killGroup(group);
-      }, COMMAND_TIMEOUT_MS);
-
-      let output = "";
-      const collect = (chunk: Buffer) => {
-        if (output.length < MAX_OUTPUT_CHARS) output += chunk.toString("utf8");
-      };
-      child.stdout.on("data", collect);
-      child.stderr.on("data", collect);
-      // Background processes (a dev server, a watcher) don't outlive the command; otherwise the call never returns.
-      child.on("exit", () => group && killGroup(group));
-      child.on("close", (code, signal) => {
-        clearTimeout(timer);
-        if (group) untrackGroup(group);
-        const cut = output.length >= MAX_OUTPUT_CHARS ? "\n[output truncated]" : "";
-        const status = timedOut
-          ? `killed after the ${COMMAND_TIMEOUT_MS / 1000} second timeout`
-          : signal
-            ? `killed by ${signal}`
-            : `exit code ${code}`;
-        resolve(`${output.slice(0, MAX_OUTPUT_CHARS)}${cut}\n[${status}]`);
-      });
-      child.on("error", (err) => {
-        clearTimeout(timer);
-        if (group) untrackGroup(group);
-        resolve(`Failed to start: ${err.message}`);
-      });
-    });
+  async run_command(root, { command }) {
+    return (await runShell(root, command)).text;
   },
 };
+
+/**
+ * Runs a shell command in `root` with a timeout, an output limit and no secrets in its environment. `text` is the
+ * output plus how it ended; `ok` is true only for exit code 0. Also used by the evals to run a task's check.
+ */
+export function runShell(root: string, command: string): Promise<{ text: string; ok: boolean }> {
+  return new Promise((resolve) => {
+    // Its own process group, so bash and everything it starts can be killed together. Node's `timeout` signals
+    // only bash, and anything left running keeps the output pipes open, so "close" would never fire.
+    const child = spawn("bash", ["-c", command], { cwd: root, env: safeEnv(), detached: true });
+    const group = child.pid;
+    if (group) trackGroup(group);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (group) killGroup(group);
+    }, COMMAND_TIMEOUT_MS);
+
+    let output = "";
+    const collect = (chunk: Buffer) => {
+      if (output.length < MAX_OUTPUT_CHARS) output += chunk.toString("utf8");
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    // Background processes (a dev server, a watcher) don't outlive the command; otherwise the call never returns.
+    child.on("exit", () => group && killGroup(group));
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (group) untrackGroup(group);
+      const cut = output.length >= MAX_OUTPUT_CHARS ? "\n[output truncated]" : "";
+      const status = timedOut
+        ? `killed after the ${COMMAND_TIMEOUT_MS / 1000} second timeout`
+        : signal
+          ? `killed by ${signal}`
+          : `exit code ${code}`;
+      resolve({
+        text: `${output.slice(0, MAX_OUTPUT_CHARS)}${cut}\n[${status}]`,
+        ok: !timedOut && !signal && code === 0,
+      });
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      if (group) untrackGroup(group);
+      resolve({ text: `Failed to start: ${err.message}`, ok: false });
+    });
+  });
+}
 
 /**
  * Resolves `rel` inside `root`, following symlinks, and throws if it ends up outside. Paths that don't exist yet

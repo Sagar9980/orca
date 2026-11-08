@@ -1,0 +1,6 @@
+{
+  "about": "A bug report with no failing test. The agent has to reproduce it; hidden tests check the fix.",
+  "prompt": "A user reports that `wordCount(\"  hello   world\\n\")` returns 6 instead of 2, and `wordCount(\"\")` returns 1 instead of 0. Words can be separated by any whitespace. Fix wordCount.",
+  "check": "npm test",
+  "protect": ["package.json", "test"]
+}

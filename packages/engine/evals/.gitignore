@@ -1,0 +1,2 @@
+# Eval runs, one folder each. Pass one to `eval --baseline` to compare a later run with it.
+results/

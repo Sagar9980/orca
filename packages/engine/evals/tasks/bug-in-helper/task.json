@@ -1,0 +1,6 @@
+{
+  "about": "The failing test is for the invoice, but the bug is in a shared helper. A hidden test checks the helper, so patching only the invoice fails.",
+  "prompt": "The invoice total is wrong and its test fails. Find the cause and fix it so `npm test` passes.",
+  "check": "npm test",
+  "protect": ["package.json", "test"]
+}
