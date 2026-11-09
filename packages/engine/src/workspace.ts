@@ -28,6 +28,45 @@ export interface Workspace {
   root: string;
   /** The repo had uncommitted changes. They stay where they are and aren't part of the run. */
   dirty: boolean;
+  /** Ignored files brought over from the repo so the project builds and runs: installed packages and .env files. */
+  copied: string[];
+}
+
+/**
+ * Folders that projects keep out of git but need in order to run: installed packages, and `dist`, the built output
+ * that packages in a monorepo import from each other. Only ones git ignores are copied.
+ */
+const DEPENDENCY_DIRS = new Set(["node_modules", ".venv", "venv", "vendor", "dist"]);
+/** Local settings files such as .env and .env.local. Reading them needs a yes (see policy.ts). */
+const ENV_FILE = /^\.env(\..+)?$/;
+
+/**
+ * Brings the repo's installed packages and .env files into the worktree, since a fresh checkout has neither and a
+ * real project can't build or run its tests without them. On macOS each is a copy-on-write clone: instant, nearly no
+ * disk, and changes in the run never reach the user's own copy. Elsewhere folders are symlinked.
+ */
+async function bringIgnoredFiles(repo: string, worktree: string): Promise<string[]> {
+  const listed = await git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z");
+  const wanted = listed
+    .split("\0")
+    .filter(Boolean)
+    .map((entry) => ({ rel: entry.replace(/\/$/, ""), isDir: entry.endsWith("/") }))
+    .filter(({ rel, isDir }) => (isDir ? DEPENDENCY_DIRS.has(path.basename(rel)) : ENV_FILE.test(path.basename(rel))));
+  const copied: string[] = [];
+  for (const { rel, isDir } of wanted) {
+    const from = path.join(repo, rel);
+    const to = path.join(worktree, rel);
+    try {
+      await fs.mkdir(path.dirname(to), { recursive: true });
+      if (process.platform === "darwin") await exec("cp", ["-cR", from, to]);
+      else if (isDir) await fs.symlink(from, to, process.platform === "win32" ? "junction" : "dir");
+      else await fs.copyFile(from, to);
+      copied.push(rel);
+    } catch {
+      // A missing or unreadable entry only means the agent installs it itself if it needs it.
+    }
+  }
+  return copied;
 }
 
 /** `from` is the branch or commit to start from; the repo's current HEAD when left out. */
@@ -49,7 +88,8 @@ export async function openWorkspace(project: string, runId: string, from?: strin
   const branch = `orca/run-${runId}`;
   const worktree = path.join(os.tmpdir(), "orca-worktrees", `${path.basename(repo)}-${runId}`);
   await git(repo, "worktree", "add", "-q", "-b", branch, worktree, base);
-  return { repo, branch, base, worktree, root: path.join(worktree, path.relative(repo, realProject)), dirty };
+  const copied = await bringIgnoredFiles(repo, worktree);
+  return { repo, branch, base, worktree, root: path.join(worktree, path.relative(repo, realProject)), dirty, copied };
 }
 
 /**
