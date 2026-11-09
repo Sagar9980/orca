@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { app } from "electron";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { ClientCommand, RunEvent } from "@orca/shared" with { "resolution-mode": "import" };
 import type { ClaudeLogin, RunHandle } from "@orca/engine" with { "resolution-mode": "import" };
@@ -59,8 +60,73 @@ function parseStart(input: unknown): StartInput {
 }
 
 /** The run's events so far, or none if it hasn't started in this app session. */
+// Every run's events are also appended to a file in the app's data folder, so a run that finished before the app
+// restarted still opens as it ended instead of offering to start again. They stay on this computer, like the code.
+const runsDir = () => path.join(app.getPath("userData"), "runs");
+const runFile = (runId: string) => path.join(runsDir(), `${runId}.jsonl`);
+
+function saveEvent(event: RunEvent) {
+  try {
+    mkdirSync(runsDir(), { recursive: true });
+    appendFileSync(runFile(event.runId), JSON.stringify(event) + "\n", { mode: 0o600 });
+  } catch {
+    // The run goes on; only reopening it after a restart would miss this event.
+  }
+}
+
+/**
+ * The events that end a run the app quit or crashed during: open questions are closed, agents stop, and the run is
+ * marked failed with where its changes are. Without them the page would still offer approvals nobody can receive.
+ */
+function closeOut(events: RunEvent[], runId: string, lastSeq: number): RunEvent[] {
+  let seq = lastSeq;
+  const at = new Date().toISOString();
+  const base = () => ({ runId, seq: ++seq, at });
+  const answered = new Set(events.flatMap((e) => (e.type === "human.responded" ? [e.requestId] : [])));
+  const summary = `Orca closed while this run was going. Any changes it made are on branch orca/run-${runId}.`;
+  const out: RunEvent[] = [];
+  for (const e of events) {
+    if (e.type === "human.requested" && !answered.has(e.request.id))
+      out.push({ type: "human.responded", ...base(), requestId: e.request.id, response: "no answer (Orca closed)" });
+  }
+  for (const e of events) {
+    if (e.type === "subagent.spawned")
+      out.push({
+        type: "subagent.updated",
+        ...base(),
+        subAgentId: e.subAgent.id,
+        patch: { state: "issue", activity: "Stopped", waitingOn: null },
+      });
+    if (e.type === "agent.spawned")
+      out.push({ type: "agent.updated", ...base(), agentId: e.agent.id, patch: { status: "issue", summary } });
+  }
+  out.push({ type: "run.finished", ...base(), status: "failed", summary });
+  return out;
+}
+
+/** A saved run. One that never finished (the app quit or crashed) is reported as stopped. */
+function savedEvents(runId: string): RunEvent[] {
+  let events: RunEvent[];
+  try {
+    events = readFileSync(runFile(runId), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as RunEvent);
+  } catch {
+    return [];
+  }
+  const last = events[events.length - 1];
+  if (last && last.type !== "run.finished") {
+    const ending = closeOut(events, runId, last.seq);
+    ending.forEach(saveEvent);
+    events.push(...ending);
+  }
+  return events;
+}
+
 export function attachRun(runId: unknown): RunEvent[] {
-  return typeof runId === "string" ? (runs.get(runId)?.events() ?? []) : [];
+  if (typeof runId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(runId)) return [];
+  return runs.get(runId)?.events() ?? savedEvents(runId);
 }
 
 /** Starts a run unless it is already going; returns its events so far either way. */
@@ -68,6 +134,9 @@ export async function startRun(input: unknown, broadcast: (event: RunEvent) => v
   const { runId, title, folder, branch, budgetUsd } = parseStart(input);
   const existing = runs.get(runId);
   if (existing) return existing.events();
+  // A run from before a restart is shown as it ended, never started a second time.
+  const saved = savedEvents(runId);
+  if (saved.length) return saved;
   if (!(await isDirectory(folder))) throw new Error("The project folder isn't on this computer.");
   // The user's own Claude Code login comes first; Orca's own loop on an API key is the fallback.
   const signedIn = !FAKE_MODEL && (await claudeLogin()).signedIn;
@@ -90,7 +159,10 @@ export async function startRun(input: unknown, broadcast: (event: RunEvent) => v
         : key
           ? { apiKey: key }
           : {}),
-    onEvent: broadcast,
+    onEvent: (event) => {
+      saveEvent(event);
+      broadcast(event);
+    },
   });
   runs.set(runId, handle);
   return handle.events();
