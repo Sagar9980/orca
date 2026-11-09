@@ -16,7 +16,7 @@ import path from "node:path";
 import { runClaudeCode, type ClaudeCodeEvent } from "./claudeCode.js";
 import { DEFAULT_MODEL } from "./models.js";
 import { buildWorker, type ApprovalAnswer, type ApprovalRequest, type WorkerEvent } from "./worker.js";
-import { closeWorkspace, openWorkspace } from "./workspace.js";
+import { closeWorkspace, openFolder, openWorkspace } from "./workspace.js";
 
 // One run of one worker, reported as the same RunEvents the UI already draws. Until the orchestrator exists
 // (Phase E) a run is a single Builder agent with one worker. The worker pauses before every model call, so
@@ -41,6 +41,11 @@ export interface StartRunOptions {
    * Orca's own worker graph on an API key. Defaults to "loop".
    */
   runner?: "loop" | "claude-code";
+  /**
+   * true (the default): work in a git worktree on a new orca/run-* branch and commit there. false: work live in the
+   * project folder on its current branch and leave the changes uncommitted for the user to review.
+   */
+  worktree?: boolean;
   /** The user's Anthropic key; falls back to ANTHROPIC_API_KEY. Never put in events, prompts or logs. */
   apiKey?: string;
   /** Pass `fakeClient()` to try runs without spending anything. */
@@ -70,6 +75,7 @@ export function startRun(options: StartRunOptions): RunHandle {
     maxUsd,
     maxTurns = 30,
     runner = "loop",
+    worktree = true,
     apiKey,
     client,
     onEvent,
@@ -214,12 +220,14 @@ export function startRun(options: StartRunOptions): RunHandle {
     });
     let ws: Awaited<ReturnType<typeof openWorkspace>>;
     try {
-      ws = await openWorkspace(project, runId, branch);
+      ws = worktree ? await openWorkspace(project, runId, branch) : await openFolder(project, branch);
     } catch (err) {
       emit("run.finished", { status: "failed", summary: errorText(err) });
       return;
     }
-    emit("run.updated", { patch: { detail: `on ${ws.branch}`, workBranch: ws.branch } });
+    emit("run.updated", {
+      patch: { detail: `on ${ws.branch}`, workBranch: ws.branch, inPlace: ws.inPlace },
+    });
     emit("agent.spawned", {
       agent: { id: AGENT, runId, name: "Builder", mission: title, status: "working", summary: "Reading the code" },
     });
@@ -235,7 +243,7 @@ export function startRun(options: StartRunOptions): RunHandle {
         tokens: 0,
       },
     });
-    if (ws.dirty) {
+    if (ws.dirty && !ws.inPlace) {
       message(
         ORCHESTRATOR,
         HUMAN,
@@ -312,14 +320,16 @@ export function startRun(options: StartRunOptions): RunHandle {
     } finally {
       // Even a failed or stopped run keeps its changes on the branch.
       const firstLine = `Orca: ${title.split("\n")[0]}`.slice(0, 72);
-      const kept = await closeWorkspace(ws, `${firstLine}\n\n${summary}`).then(
-        ({ committed }) => {
-          if (committed) return `Changes are on branch ${ws.branch}.`;
-          emit("run.updated", { patch: { workBranch: null } });
-          return "No changes were made.";
-        },
-        (err) => `Couldn't save the branch: ${errorText(err)}`,
-      );
+      const kept = ws.inPlace
+        ? `Changes are in your folder on ${ws.branch || "the current commit"}, not committed, for you to review.`
+        : await closeWorkspace(ws, `${firstLine}\n\n${summary}`).then(
+            ({ committed }) => {
+              if (committed) return `Changes are on branch ${ws.branch}.`;
+              emit("run.updated", { patch: { workBranch: null } });
+              return "No changes were made.";
+            },
+            (err) => `Couldn't save the branch: ${errorText(err)}`,
+          );
       summary = `${summary} ${kept}`.trim();
     }
     emit("subagent.updated", {

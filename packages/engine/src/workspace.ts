@@ -30,6 +30,8 @@ export interface Workspace {
   dirty: boolean;
   /** Ignored files brought over from the repo so the project builds and runs: installed packages and .env files. */
   copied: string[];
+  /** Working live in the user's own folder on its current branch: no worktree, no new branch, nothing committed. */
+  inPlace: boolean;
 }
 
 /**
@@ -95,7 +97,29 @@ export async function openWorkspace(project: string, runId: string, from?: strin
   const worktree = path.join(os.tmpdir(), "orca-worktrees", `${path.basename(repo)}-${runId}`);
   await git(repo, "worktree", "add", "-q", "-b", branch, worktree, base);
   const copied = await bringIgnoredFiles(repo, worktree);
-  return { repo, branch, base, worktree, root: path.join(worktree, path.relative(repo, realProject)), dirty, copied };
+  const root = path.join(worktree, path.relative(repo, realProject));
+  return { repo, branch, base, worktree, root, dirty, copied, inPlace: false };
+}
+
+/**
+ * Works live in the user's own folder on the branch it is on, like an agent in a terminal: the user sees changes as
+ * they happen and reviews them before committing. Nothing is copied, branched or committed. `from` must be the
+ * folder's current branch, so the run never switches the user's checkout.
+ */
+export async function openFolder(project: string, from?: string): Promise<Workspace> {
+  const realProject = await fs.realpath(project);
+  const repo = await git(realProject, "rev-parse", "--show-toplevel").catch(() => {
+    throw new Error(`${project} is not in a git repository. Run \`git init\` first.`);
+  });
+  const branch = await git(repo, "symbolic-ref", "--short", "-q", "HEAD").catch(() => "");
+  if (from && branch !== from) {
+    throw new Error(
+      `Your folder is on ${branch || "a detached commit"}, not ${from}. Switch to ${from} first, or run in a worktree.`,
+    );
+  }
+  const base = await git(repo, "rev-parse", "HEAD").catch(() => "");
+  const dirty = (await git(repo, "status", "--porcelain")) !== "";
+  return { repo, branch, base, worktree: repo, root: realProject, dirty, copied: [], inPlace: true };
 }
 
 /**

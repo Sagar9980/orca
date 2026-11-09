@@ -1,13 +1,4 @@
-import type {
-  Agent,
-  AgentStatus,
-  HumanRequest,
-  Message,
-  PlanStep,
-  Run,
-  RunStatus,
-  SubAgent,
-} from "./model.js";
+import type { Agent, AgentStatus, HumanRequest, Message, PlanStep, Run, RunStatus, SubAgent } from "./model.js";
 
 // Everything that happens in a run is an event. The server streams them in
 // order, and any client can rebuild the full run state by replaying them.
@@ -22,7 +13,7 @@ type EventOf<T extends string, P> = {
 
 export type RunEvent =
   | EventOf<"run.started", { run: Run }>
-  | EventOf<"run.updated", { patch: Partial<Pick<Run, "status" | "title" | "detail" | "workBranch">> }>
+  | EventOf<"run.updated", { patch: Partial<Pick<Run, "status" | "title" | "detail" | "workBranch" | "inPlace">> }>
   | EventOf<"run.plan_updated", { plan: PlanStep[] }>
   | EventOf<"run.spend", { spentUsd: number }>
   | EventOf<"run.finished", { status: Extract<RunStatus, "done" | "failed">; summary: string }>

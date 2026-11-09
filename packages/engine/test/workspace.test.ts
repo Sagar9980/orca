@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { closeWorkspace, openWorkspace } from "../src/workspace.js";
+import { closeWorkspace, openFolder, openWorkspace } from "../src/workspace.js";
 import { exists, git, testRepo } from "./helpers.js";
 
 let repo: string;
@@ -122,5 +122,16 @@ describe("workspace", () => {
 
     await expect(openWorkspace(repo, id)).rejects.toThrow(/already ran before.*orca\/run-/);
     expect(git(repo, "rev-parse", first.branch)).toBe(before);
+  });
+
+  it("works live in the folder on its current branch when there's no worktree", async () => {
+    const dir = await testRepo();
+    const current = git(dir, "branch", "--show-current");
+    const ws = await openFolder(dir, current);
+    expect(ws).toMatchObject({ inPlace: true, branch: current, copied: [] });
+    expect(await fs.realpath(ws.root)).toBe(await fs.realpath(dir));
+
+    await expect(openFolder(dir, "some-other-branch")).rejects.toThrow(/Your folder is on .*not some-other-branch/);
+    expect(git(dir, "branch", "--list", "orca/*")).toBe("");
   });
 });
