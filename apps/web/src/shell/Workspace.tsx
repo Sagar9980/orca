@@ -187,8 +187,8 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
               <>
                 <p>
                   A Builder agent will work on {project.name} on its own <b>orca/run-*</b> branch, made from{" "}
-                  <b>{run.branch}</b>. Your checkout isn't touched. It asks you before running commands or creating
-                  files, and stops at ${run.budgetUsd}.
+                  <b>{run.branch}</b>. Your checkout isn't touched. It edits files and runs commands on its own, asks
+                  you before installing packages, going online or reading .env files, and stops at ${run.budgetUsd}.
                 </p>
                 {changes > 0 && (
                   <p className="rounded-lg border border-warning/45 bg-warning/10 px-3.5 py-2.5 text-left text-sm">
