@@ -40,7 +40,14 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
       desktop && folder
         ? createDesktopSource(
             desktop,
-            { runId: run.id, title: run.title, folder, branch: run.branch, budgetUsd: run.budgetUsd },
+            {
+              runId: run.id,
+              title: run.title,
+              folder,
+              branch: run.branch,
+              budgetUsd: run.budgetUsd,
+              worktree: run.worktree !== false,
+            },
             setStartError,
           )
         : createDemoSource(),
@@ -115,7 +122,11 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
             {live.workBranch ? (
               <button
                 type="button"
-                title={`Orca's branch, made from ${run.branch}. Its changes are here. Click to copy the name.`}
+                title={
+                  live.inPlace
+                    ? "The agent works live in your folder on this branch; its changes are left uncommitted. Click to copy the name."
+                    : `Orca's branch, made from ${run.branch}. Its changes are here. Click to copy the name.`
+                }
                 className="inline-flex items-center gap-[5px] hover:text-foreground"
                 onClick={() => {
                   void navigator.clipboard?.writeText(live.workBranch!).then(() => setCopied(true));
@@ -124,7 +135,7 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
               >
                 <BranchIcon />
                 <b>{copied ? "Copied" : live.workBranch}</b>
-                <span className="text-faint">from {run.branch}</span>
+                <span className="text-faint">{live.inPlace ? "in your folder" : `from ${run.branch}`}</span>
               </button>
             ) : (
               <span title={live.workBranch === null ? "The run made no changes." : `Started from ${run.branch}`}>
@@ -185,12 +196,22 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
               <p>{state.run.summary ?? "Starting…"}</p>
             ) : (
               <>
-                <p>
-                  A Builder agent will work on {project.name} on its own <b>orca/run-*</b> branch, made from{" "}
-                  <b>{run.branch}</b>. Your checkout isn't touched. It edits files and runs commands on its own, asks
-                  you before installing packages, going online or reading .env files, and stops at ${run.budgetUsd}.
-                </p>
-                {changes > 0 && (
+                {run.worktree === false ? (
+                  <p>
+                    A Builder agent will work live in your {project.name} folder on <b>{run.branch}</b>, without a
+                    worktree. You'll see its changes as it makes them, and they're left uncommitted for you to review.
+                    It edits files and runs commands on its own, asks you before installing packages, going online or
+                    reading .env files, and stops at ${run.budgetUsd}.
+                  </p>
+                ) : (
+                  <p>
+                    A Builder agent will work on {project.name} in a worktree on its own <b>orca/run-*</b> branch, made
+                    from <b>{run.branch}</b>. Your folder isn't touched. It edits files and runs commands on its own,
+                    asks you before installing packages, going online or reading .env files, and stops at $
+                    {run.budgetUsd}.
+                  </p>
+                )}
+                {changes > 0 && run.worktree !== false && (
                   <p className="rounded-lg border border-warning/45 bg-warning/10 px-3.5 py-2.5 text-left text-sm">
                     You have {changes} uncommitted {changes === 1 ? "change" : "changes"} in {project.name}. The agent
                     starts from your last commit, so it won't see {changes === 1 ? "it" : "them"}. Commit first if

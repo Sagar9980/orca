@@ -9,6 +9,8 @@ export interface DesktopRunInput {
   /** Branch the run starts from. */
   branch: string;
   budgetUsd: number;
+  /** false: work live in the folder on its current branch instead of in a worktree. */
+  worktree: boolean;
 }
 
 /** All the page ever learns about the Anthropic key; the key itself stays in the desktop app. */
