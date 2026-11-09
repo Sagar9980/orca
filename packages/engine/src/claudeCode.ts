@@ -10,7 +10,7 @@ import {
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { decide, type Decision } from "./policy.js";
+import { decide, SECRETS_FILE, type Decision } from "./policy.js";
 
 // A worker that runs the user's own Claude Code through the Claude Agent SDK, signed in with `claude auth login`.
 // Claude Code runs its own agent loop; Orca keeps the parts that are Orca's: every tool call passes Orca's policy
@@ -137,6 +137,8 @@ export function decideClaudeTool(root: string, name: string, input: unknown): De
 
   switch (name) {
     case "Read":
+      if (SECRETS_FILE.test(rel)) return { verdict: "ask", reason: "reads a secrets file" };
+      return { verdict: "allow", reason: "reads only" };
     case "Glob":
     case "Grep":
     case "LS":

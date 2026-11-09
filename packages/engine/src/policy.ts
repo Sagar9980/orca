@@ -25,6 +25,12 @@ const DENIED_COMMANDS: [RegExp, string][] = [
   [/(^|[\s'"=])(~|\$HOME)(\/|\s|$)|\.\.\//, "reaches outside the project"],
 ];
 
+/**
+ * Local secrets files (.env, .env.local, ...), copied into the run so the project works. Reading one needs a yes, so
+ * secrets reach the model only when the human agrees. Example and template files are fine.
+ */
+export const SECRETS_FILE = /(^|\/)\.env(\.(?!example$|sample$|template$)[^/]+)?$/;
+
 /** Files the normal edit flow doesn't touch. Changing them needs a yes. */
 const SENSITIVE_FILES = /(^|\/)(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|\.[^/]+)$/;
 
@@ -32,6 +38,8 @@ export function decide(root: string, name: string, input: unknown): Decision {
   const args = (input ?? {}) as Record<string, unknown>;
   switch (name) {
     case "read_file":
+      if (SECRETS_FILE.test(String(args.path ?? ""))) return { verdict: "ask", reason: "reads a secrets file" };
+      return { verdict: "allow", reason: "reads only" };
     case "list_files":
     case "search":
       return { verdict: "allow", reason: "reads only" };

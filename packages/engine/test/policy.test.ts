@@ -51,4 +51,10 @@ describe("policy", () => {
   it("denies unknown tools", () => {
     expect(verdict("delete_everything", {})).toBe("deny");
   });
+
+  it("asks before reading a secrets file", () => {
+    expect(verdict("read_file", { path: ".env" })).toBe("ask");
+    expect(verdict("read_file", { path: "apps/web/.env.local" })).toBe("ask");
+    expect(verdict("read_file", { path: ".env.example" })).toBe("allow");
+  });
 });
