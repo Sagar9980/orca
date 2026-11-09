@@ -38,6 +38,8 @@ interface StartInput {
   folder: string;
   branch: string;
   budgetUsd: number;
+  /** false: work live in the folder on its current branch instead of in a worktree. */
+  worktree: boolean;
 }
 
 function parseStart(input: unknown): StartInput {
@@ -54,9 +56,10 @@ function parseStart(input: unknown): StartInput {
     typeof i.budgetUsd === "number" &&
     Number.isFinite(i.budgetUsd) &&
     i.budgetUsd > 0 &&
-    i.budgetUsd <= 100;
+    i.budgetUsd <= 100 &&
+    (i.worktree === undefined || typeof i.worktree === "boolean");
   if (!ok) throw new Error("Invalid run.");
-  return i as unknown as StartInput;
+  return { ...(i as unknown as StartInput), worktree: i.worktree !== false };
 }
 
 /** The run's events so far, or none if it hasn't started in this app session. */
@@ -131,7 +134,7 @@ export function attachRun(runId: unknown): RunEvent[] {
 
 /** Starts a run unless it is already going; returns its events so far either way. */
 export async function startRun(input: unknown, broadcast: (event: RunEvent) => void): Promise<RunEvent[]> {
-  const { runId, title, folder, branch, budgetUsd } = parseStart(input);
+  const { runId, title, folder, branch, budgetUsd, worktree } = parseStart(input);
   const existing = runs.get(runId);
   if (existing) return existing.events();
   // A run from before a restart is shown as it ended, never started a second time.
@@ -152,6 +155,7 @@ export async function startRun(input: unknown, broadcast: (event: RunEvent) => v
     project: folder,
     branch,
     maxUsd: budgetUsd,
+    worktree,
     ...(FAKE_MODEL
       ? { client: fakeClient() }
       : signedIn
