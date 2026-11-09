@@ -18,6 +18,8 @@ export interface RunSummary {
   /** Branch the run starts from. */
   branch: string;
   budgetUsd: number;
+  /** Runs in a git worktree on its own branch; false when it works live in the project folder. */
+  worktree: boolean;
   /** ISO 8601 timestamp. */
   createdAt: string;
 }
@@ -62,6 +64,8 @@ export interface CreateRunInput {
   title: string;
   branch: string;
   budgetUsd: number;
+  /** Work in a git worktree on its own branch (true), or live in the project folder on its current branch. */
+  worktree: boolean;
 }
 
 /** What the desktop app reports about a folder the user picked. */

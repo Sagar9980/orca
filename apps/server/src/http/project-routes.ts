@@ -56,6 +56,7 @@ const createRun = z.object({
   title: z.string().trim().min(3, "Describe what to build in a few words.").max(2000),
   branch: branchName,
   budgetUsd: z.number().refine((n) => (RUN_BUDGET_CHOICES_USD as readonly number[]).includes(n), "Pick one of the spend limits."),
+  worktree: z.boolean().default(true),
 });
 
 const updateRun = z.object({
@@ -143,6 +144,7 @@ const toRunSummary = (r: typeof run.$inferSelect): RunSummary => ({
   status: r.status,
   branch: r.branch,
   budgetUsd: r.budgetCents / 100,
+  worktree: r.worktree,
   createdAt: r.createdAt.toISOString(),
 });
 
@@ -292,6 +294,7 @@ export async function projectRoutes(app: FastifyInstance) {
         title: parsed.data.title,
         branch: parsed.data.branch,
         budgetCents: Math.round(parsed.data.budgetUsd * 100),
+        worktree: parsed.data.worktree,
       })
       .returning();
     await db.update(project).set({ lastOpenedAt: new Date() }).where(eq(project.id, owned.id));
