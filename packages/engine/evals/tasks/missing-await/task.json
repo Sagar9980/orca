@@ -1,0 +1,6 @@
+{
+  "about": "An async bug: forEach with async callbacks returns before any user is fetched, and drops their errors.",
+  "prompt": "The tests fail. Fix the bug so `npm test` passes.",
+  "check": "npm test",
+  "protect": ["package.json", "test"]
+}

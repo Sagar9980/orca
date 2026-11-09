@@ -20,6 +20,10 @@ pnpm monorepo, TypeScript everywhere.
   `pnpm --filter @orca/engine fix` (`--model`, `--budget 0.25`, `--turns 30`); it asks y/n before commands and works
   on its own `orca/run-*` branch in a git worktree. Defaults to `claude-haiku-5-5` to keep testing cheap. Needs
   `ANTHROPIC_API_KEY` in `packages/engine/.env`.
+- Evals: `pnpm --filter @orca/engine eval` runs the tasks in `packages/engine/evals/tasks` and reports pass rate, cost
+  and turns (`--repeat 3`, `--baseline evals/results/<run>` to compare, task names to run only those). Run it before
+  and after changing a prompt, the loop or the model. Each task is graded by a check the agent can't edit; a new task
+  needs a `solution/`, which the engine tests use to prove it can pass.
 - `apps/web`: React + Vite UI, styled with Tailwind v4 and shadcn/ui conventions. Colors are tokens in
   `src/index.css` (`bg-panel`, `text-muted-foreground`, `border-border-strong`, status `tone-*` classes); shared parts
   are in `src/components/ui` (`Button`, `Input`, `Badge`), built with `cva` and `cn()`. Use tokens, not hex colors.

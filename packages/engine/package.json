@@ -13,6 +13,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json",
     "fix": "tsx --env-file-if-exists=.env src/cli.ts",
+    "eval": "tsx --env-file-if-exists=.env src/evalCli.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
