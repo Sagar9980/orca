@@ -31,6 +31,7 @@ const STATUS_TEXT: Record<string, string> = {
 export function Workspace({ project, run }: { project: Project; run: RunSummary }) {
   const shell = useShell();
   const [startError, setStartError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   // In the desktop app, with the project's folder on this computer, a real agent works on it. Anywhere else the
   // run plays the example team. One source per run.
   const folder = desktop ? project.folder : null;
@@ -111,10 +112,27 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
         </div>
         {live && (
           <div className="flex flex-none items-center gap-4 font-mono text-xs leading-none whitespace-nowrap text-muted-foreground tabular-nums max-[780px]:order-3 max-[780px]:w-full [&_b]:font-medium [&_b]:text-foreground [&_svg]:size-3 [&_svg]:text-faint [&>span]:inline-flex [&>span]:items-center [&>span]:gap-[5px]">
-            <span title={`Started from ${run.branch}`}>
-              <BranchIcon />
-              <b>{run.branch}</b>
-            </span>
+            {live.workBranch ? (
+              <button
+                type="button"
+                title={`Orca's branch, made from ${run.branch}. Its changes are here. Click to copy the name.`}
+                className="inline-flex items-center gap-[5px] hover:text-foreground"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(live.workBranch!).then(() => setCopied(true));
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+              >
+                <BranchIcon />
+                <b>{copied ? "Copied" : live.workBranch}</b>
+                <span className="text-faint">from {run.branch}</span>
+              </button>
+            ) : (
+              <span title={live.workBranch === null ? "The run made no changes." : `Started from ${run.branch}`}>
+                <BranchIcon />
+                <b>{run.branch}</b>
+                {live.workBranch === null && <span className="text-faint">no changes</span>}
+              </span>
+            )}
             <span className="max-[960px]:hidden! max-[780px]:inline-flex!">
               Elapsed <b>{formatClock((live.finishedAt ? Date.parse(live.finishedAt) : now) - Date.parse(live.startedAt))}</b>
             </span>
