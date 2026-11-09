@@ -8,10 +8,13 @@ interface FakeTurn {
   tool?: { name: string; input: Record<string, unknown> };
 }
 
-/** Looks around, asks to run a command, asks to create a file, then finishes. Works on any project. */
+/**
+ * Looks around, asks to run a command (git stash still needs a yes; ordinary commands don't), creates a file, then
+ * finishes. Works on any project.
+ */
 const DEMO_TURNS: FakeTurn[] = [
   { text: "I'll look at the project first.", tool: { name: "list_files", input: { path: "." } } },
-  { text: "Let me check the git status.", tool: { name: "run_command", input: { command: "git status --short" } } },
+  { text: "Let me check for stashed work.", tool: { name: "run_command", input: { command: "git stash list" } } },
   {
     text: "I'll add a small note so the run leaves a change to review.",
     tool: {

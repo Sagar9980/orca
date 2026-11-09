@@ -18,12 +18,14 @@ describe("Claude Code gate", () => {
 
   it("follows Orca's edit rules", () => {
     expect(verdict("Edit", { file_path: at("src/cart.js") })).toBe("allow");
-    expect(verdict("Edit", { file_path: at("package.json") })).toBe("ask");
-    expect(verdict("Write", { file_path: at("src/new.js") })).toBe("ask");
+    expect(verdict("Edit", { file_path: at("package.json") })).toBe("allow");
+    expect(verdict("Write", { file_path: at("src/new.js") })).toBe("allow");
+    expect(verdict("Read", { file_path: at(".env") })).toBe("ask");
   });
 
-  it("asks for commands and the internet, and denies dangerous commands and outside tools", () => {
-    expect(verdict("Bash", { command: "npm test" })).toBe("ask");
+  it("runs ordinary commands, asks for installs and the internet, and denies dangerous commands and outside tools", () => {
+    expect(verdict("Bash", { command: "npm test" })).toBe("allow");
+    expect(verdict("Bash", { command: "npm install left-pad" })).toBe("ask");
     expect(verdict("Bash", { command: "git push origin main" })).toBe("deny");
     expect(verdict("WebFetch", { url: "https://example.com" })).toBe("ask");
     expect(verdict("mcp__github__create_issue", {})).toBe("deny");
