@@ -219,7 +219,7 @@ export function startRun(options: StartRunOptions): RunHandle {
       emit("run.finished", { status: "failed", summary: errorText(err) });
       return;
     }
-    emit("run.updated", { patch: { detail: `on ${ws.branch}` } });
+    emit("run.updated", { patch: { detail: `on ${ws.branch}`, workBranch: ws.branch } });
     emit("agent.spawned", {
       agent: { id: AGENT, runId, name: "Builder", mission: title, status: "working", summary: "Reading the code" },
     });
@@ -313,7 +313,11 @@ export function startRun(options: StartRunOptions): RunHandle {
       // Even a failed or stopped run keeps its changes on the branch.
       const firstLine = `Orca: ${title.split("\n")[0]}`.slice(0, 72);
       const kept = await closeWorkspace(ws, `${firstLine}\n\n${summary}`).then(
-        ({ committed }) => (committed ? `Changes are on branch ${ws.branch}.` : "No changes were made."),
+        ({ committed }) => {
+          if (committed) return `Changes are on branch ${ws.branch}.`;
+          emit("run.updated", { patch: { workBranch: null } });
+          return "No changes were made.";
+        },
         (err) => `Couldn't save the branch: ${errorText(err)}`,
       );
       summary = `${summary} ${kept}`.trim();
