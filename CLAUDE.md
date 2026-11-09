@@ -27,7 +27,9 @@ pnpm monorepo, TypeScript everywhere.
   in the desktop app when the project's folder is on this computer, else the scripted demo (`src/run/demoSource.ts`).
 - `apps/server`: Fastify + Drizzle/Postgres + Better Auth. Projects, machines, project folders, runs.
 - `apps/desktop`: Electron. Picks local folders and runs the engine in the main process (`src/runs.ts`); the page
-  reaches it only through `src/preload.ts`, and every IPC call is checked with `fromOrca` in `src/main.ts`. The user's
+  reaches it only through `src/preload.ts`, and every IPC call is checked with `fromOrca` in `src/main.ts`. Runs use
+  the user's own Claude Code login first (`claude auth login`; `packages/engine/src/claudeCode.ts` drives it through
+  the Claude Agent SDK, with Orca's policy in a `PreToolUse` hook and approvals in `canUseTool`), else the user's
   Anthropic key is saved from the Account page, encrypted with `safeStorage` (`src/apiKey.ts`); the page only sees
   its last four characters. In development `packages/engine/.env` is the fallback; `pnpm dev:fake`
   (`ORCA_FAKE_MODEL=1`) runs agents on scripted model replies for free.
