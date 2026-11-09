@@ -112,4 +112,15 @@ describe("workspace", () => {
     expect(files).not.toContain("node_modules");
     expect(files).not.toMatch(/^\.env$/m);
   });
+
+  it("refuses to start a run whose branch already exists, and leaves that branch alone", async () => {
+    const id = runId();
+    const first = await openWorkspace(repo, id);
+    await fs.writeFile(path.join(first.root, "src/slug.js"), "export const first = true;\n");
+    await closeWorkspace(first, "Orca: first");
+    const before = git(repo, "rev-parse", first.branch);
+
+    await expect(openWorkspace(repo, id)).rejects.toThrow(/already ran before.*orca\/run-/);
+    expect(git(repo, "rev-parse", first.branch)).toBe(before);
+  });
 });

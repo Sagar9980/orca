@@ -86,6 +86,12 @@ export async function openWorkspace(project: string, runId: string, from?: strin
 
   const dirty = (await git(repo, "status", "--porcelain")) !== "";
   const branch = `orca/run-${runId}`;
+  // The run already ran once (e.g. before the app kept runs across restarts). Its branch holds that work, so it is
+  // never reused or reset; the user starts a new run instead.
+  const taken = await git(repo, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`).catch(() => "");
+  if (taken) {
+    throw new Error(`This run already ran before, and its work is on branch ${branch}. Start a new run to try again.`);
+  }
   const worktree = path.join(os.tmpdir(), "orca-worktrees", `${path.basename(repo)}-${runId}`);
   await git(repo, "worktree", "add", "-q", "-b", branch, worktree, base);
   const copied = await bringIgnoredFiles(repo, worktree);
