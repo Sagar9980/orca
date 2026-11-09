@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type SyntheticEvent, type ReactNode }
 import { OrcaMark } from "../components/icons";
 import { Badge } from "../components/ui/badge";
 import { Button, buttonVariants } from "../components/ui/button";
+import { bridgeError, desktop, type DesktopBridge, type KeyStatus } from "../lib/desktop";
 import { cn } from "../lib/utils";
 import { clearQuery, Link, navigate, useLocation } from "../router";
 import { appUrl, authClient, describeError, type SocialProvider } from "./client";
@@ -74,6 +75,7 @@ export function Account({ session }: { session: SessionData }) {
         {banner && <Notice tone={banner.tone}>{banner.text}</Notice>}
 
         <ProfileSection session={session} />
+        {desktop && <ApiKeySection bridge={desktop} />}
         <EmailSection session={session} />
         <PasswordSection hasPassword={hasPassword} email={session.user.email} />
         <MethodsSection accounts={accounts} reload={loadAccounts} />
@@ -122,6 +124,107 @@ function ProfileSection({ session }: { session: SessionData }) {
         <Field label="Name" id="acct-name" autoComplete="name" required value={name} onChange={(e) => setName(e.target.value)} />
         <Submit className="self-start" busy={busy} disabled={!name.trim() || name.trim() === session.user.name}>
           Save name
+        </Submit>
+      </form>
+    </Section>
+  );
+}
+
+/** The user's Anthropic key, kept by the desktop app. The page sends a new key but never reads one back. */
+function ApiKeySection({ bridge }: { bridge: DesktopBridge }) {
+  const [status, setStatus] = useState<KeyStatus | null>(null);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<Note>(null);
+
+  useEffect(() => {
+    bridge.keyStatus().then(setStatus, () => setStatus({ source: null, last4: null }));
+  }, [bridge]);
+
+  const submit = async (e: SyntheticEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setNote(null);
+    try {
+      setStatus(await bridge.saveKey(key.trim()));
+      setKey("");
+      setNote({ tone: "success", text: "Key checked and saved." });
+    } catch (err) {
+      setNote({ tone: "error", text: bridgeError(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      setStatus(await bridge.removeKey());
+      setNote({ tone: "success", text: "Key removed from this computer." });
+    } catch (err) {
+      setNote({ tone: "error", text: bridgeError(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section
+      title="Anthropic API key"
+      description={
+        <>
+          Agents call Claude with your own key, billed to your Anthropic account. It's encrypted with this computer's
+          keychain and never sent to Orca's servers.{" "}
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-primary">
+            Get a key
+          </a>
+        </>
+      }
+    >
+      <form className={form} onSubmit={submit}>
+        {note && <Notice tone={note.tone}>{note.text}</Notice>}
+        {status === null ? (
+          <p className="text-muted-foreground">Loading…</p>
+        ) : status.source ? (
+          <ul className={list}>
+            <li>
+              <span className={item}>
+                <span>
+                  Key ending in <span className="font-mono">…{status.last4}</span>
+                  {status.source === "saved" ? (
+                    <Badge tone="tone-success" className={tag}>
+                      Saved
+                    </Badge>
+                  ) : (
+                    <Badge tone="tone-muted" className={tag}>
+                      From .env
+                    </Badge>
+                  )}
+                </span>
+              </span>
+              {status.source === "saved" && (
+                <Button variant="link" onClick={remove} disabled={busy}>
+                  Remove
+                </Button>
+              )}
+            </li>
+          </ul>
+        ) : (
+          <Notice tone="info">Add a key to start runs on this computer.</Notice>
+        )}
+        <PasswordField
+          label={status?.source === "saved" ? "Replace key" : "API key"}
+          id="acct-api-key"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="sk-ant-…"
+          required
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+        />
+        <Submit className="self-start" busy={busy} disabled={!key.trim()}>
+          Check and save
         </Submit>
       </form>
     </Section>

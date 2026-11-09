@@ -31,9 +31,10 @@ pnpm monorepo, TypeScript everywhere.
   in the desktop app when the project's folder is on this computer, else the scripted demo (`src/run/demoSource.ts`).
 - `apps/server`: Fastify + Drizzle/Postgres + Better Auth. Projects, machines, project folders, runs.
 - `apps/desktop`: Electron. Picks local folders and runs the engine in the main process (`src/runs.ts`); the page
-  reaches it only through `src/preload.ts`, and every IPC call is checked with `fromOrca` in `src/main.ts`. In
-  development it reads the key from `packages/engine/.env`; `pnpm dev:fake` (`ORCA_FAKE_MODEL=1`) runs agents on
-  scripted model replies for free.
+  reaches it only through `src/preload.ts`, and every IPC call is checked with `fromOrca` in `src/main.ts`. The user's
+  Anthropic key is saved from the Account page, encrypted with `safeStorage` (`src/apiKey.ts`); the page only sees
+  its last four characters. In development `packages/engine/.env` is the fallback; `pnpm dev:fake`
+  (`ORCA_FAKE_MODEL=1`) runs agents on scripted model replies for free.
 - `apps/marketing`: Next.js landing page. Read `apps/marketing/AGENTS.md` before editing it.
 
 ## Commands

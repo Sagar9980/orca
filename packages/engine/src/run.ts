@@ -33,6 +33,8 @@ export interface StartRunOptions {
   model?: string;
   maxUsd: number;
   maxTurns?: number;
+  /** The user's Anthropic key; falls back to ANTHROPIC_API_KEY. Never put in events, prompts or logs. */
+  apiKey?: string;
   /** Pass `fakeClient()` to try runs without spending anything. */
   client?: Anthropic;
   onEvent: (event: RunEvent) => void;
@@ -51,7 +53,18 @@ export interface RunHandle {
 type Payload<T extends RunEvent["type"]> = Omit<Extract<RunEvent, { type: T }>, "type" | "runId" | "seq" | "at">;
 
 export function startRun(options: StartRunOptions): RunHandle {
-  const { runId, title, project, branch, model = DEFAULT_MODEL, maxUsd, maxTurns = 30, client, onEvent } = options;
+  const {
+    runId,
+    title,
+    project,
+    branch,
+    model = DEFAULT_MODEL,
+    maxUsd,
+    maxTurns = 30,
+    apiKey,
+    client,
+    onEvent,
+  } = options;
   const log: RunEvent[] = [];
   let seq = 0;
   let paused = false;
@@ -190,7 +203,7 @@ export function startRun(options: StartRunOptions): RunHandle {
     let summary = "";
     let ok = false;
     try {
-      const worker = buildWorker({ root: ws.root, model, maxTurns, maxUsd, ...(client ? { client } : {}) });
+      const worker = buildWorker({ root: ws.root, model, maxTurns, maxUsd, apiKey, ...(client ? { client } : {}) });
       const thread = { configurable: { thread_id: runId } };
       let input: Parameters<typeof worker.stream>[0] = { messages: [{ role: "user", content: title }] };
       while (!stopped) {

@@ -11,6 +11,13 @@ export interface DesktopRunInput {
   budgetUsd: number;
 }
 
+/** All the page ever learns about the Anthropic key; the key itself stays in the desktop app. */
+export interface KeyStatus {
+  /** "saved" in the keychain, "dev" from packages/engine/.env in development, or none. */
+  source: "saved" | "dev" | null;
+  last4: string | null;
+}
+
 /** What the desktop app's preload script exposes. Absent in a normal browser. */
 export interface DesktopBridge {
   device(): Promise<DeviceInfo>;
@@ -21,6 +28,10 @@ export interface DesktopBridge {
   initGit(folder: string): Promise<FolderInfo>;
   /** Colors the window's own title bar and buttons to match the page. */
   setTheme(theme: "light" | "dark" | "system"): Promise<void>;
+  keyStatus(): Promise<KeyStatus>;
+  /** Checks the key with Anthropic, then stores it encrypted on this computer. */
+  saveKey(key: string): Promise<KeyStatus>;
+  removeKey(): Promise<KeyStatus>;
   /** The run's events so far; none if it hasn't started in this app session. */
   runAttach(runId: string): Promise<RunEvent[]>;
   /** Starts a real agent run, unless it is already going. Returns its events so far. */
