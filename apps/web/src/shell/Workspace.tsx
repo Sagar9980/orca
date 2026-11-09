@@ -46,6 +46,16 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
   );
   useEffect(() => () => source.close?.(), [source]);
   const { state, send } = useRun(source);
+  // Uncommitted work in the project, checked before a run starts: the agent works from the last commit.
+  const [changes, setChanges] = useState(0);
+  useEffect(() => {
+    if (!desktop || !folder || state) return;
+    let live = true;
+    desktop.inspectFolder(folder).then((info) => live && setChanges(info?.changes ?? 0), () => {});
+    return () => {
+      live = false;
+    };
+  }, [folder, Boolean(state)]);
   const [selectedId, setSelectedId] = useState(() => readPref("orca-agent"));
 
   const live = state?.run;
@@ -155,6 +165,13 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
                   <b>{run.branch}</b>. Your checkout isn't touched. It asks you before running commands or creating
                   files, and stops at ${run.budgetUsd}.
                 </p>
+                {changes > 0 && (
+                  <p className="rounded-lg border border-warning/45 bg-warning/10 px-3.5 py-2.5 text-left text-sm">
+                    You have {changes} uncommitted {changes === 1 ? "change" : "changes"} in {project.name}. The agent
+                    starts from your last commit, so it won't see {changes === 1 ? "it" : "them"}. Commit first if
+                    the task depends on {changes === 1 ? "it" : "them"}.
+                  </p>
+                )}
                 <Button
                   size="lg"
                   onClick={() => {

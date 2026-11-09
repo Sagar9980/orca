@@ -75,6 +75,8 @@ export interface FolderInfo {
   branches: string[];
   /** "owner/repo" when origin points at GitHub. */
   githubRepo: string | null;
+  /** Files with uncommitted changes. A run starts from the last commit, so it doesn't see them. */
+  changes: number;
 }
 
 /** Header the web app sends from the desktop app so the server can return that device's folders. */

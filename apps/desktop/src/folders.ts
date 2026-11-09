@@ -10,6 +10,7 @@ export interface FolderInfo {
   branch: string | null;
   branches: string[];
   githubRepo: string | null;
+  changes: number;
 }
 
 function git(cwd: string, args: string[]): Promise<string | null> {
@@ -43,12 +44,13 @@ export async function inspectFolder(folder: string): Promise<FolderInfo> {
   const top = await git(folder, ["rev-parse", "--show-toplevel"]);
   // Only a folder that is the root of its repo counts; a subfolder of some other repo doesn't.
   if (!top || (await realpath(top).catch(() => top)) !== (await realpath(folder).catch(() => folder))) {
-    return { path: folder, name, isGit: false, branch: null, branches: [], githubRepo: null };
+    return { path: folder, name, isGit: false, branch: null, branches: [], githubRepo: null, changes: 0 };
   }
-  const [branch, list, remote] = await Promise.all([
+  const [branch, list, remote, status] = await Promise.all([
     git(folder, ["symbolic-ref", "--short", "-q", "HEAD"]),
     git(folder, ["branch", "--format=%(refname:short)"]),
     git(folder, ["remote", "get-url", "origin"]),
+    git(folder, ["status", "--porcelain"]),
   ]);
   const branches = list ? list.split("\n").filter(Boolean) : [];
   return {
@@ -58,6 +60,7 @@ export async function inspectFolder(folder: string): Promise<FolderInfo> {
     branch: branch || null,
     branches: branch && !branches.includes(branch) ? [branch, ...branches] : branches,
     githubRepo: githubRepoFromRemote(remote),
+    changes: status ? status.split("\n").filter(Boolean).length : 0,
   };
 }
 
