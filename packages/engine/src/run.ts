@@ -11,6 +11,7 @@ import {
   type RunEvent,
   type SubAgent,
 } from "@orca/shared";
+import fs from "node:fs";
 import path from "node:path";
 import { runClaudeCode, type ClaudeCodeEvent } from "./claudeCode.js";
 import { DEFAULT_MODEL } from "./models.js";
@@ -247,7 +248,8 @@ export function startRun(options: StartRunOptions): RunHandle {
           ask: async (call) => (await askHuman({ calls: [call] }))[call.id] === true,
           waitWhilePaused,
           signal: stopSignal.signal,
-          onEvent: (event) => onClaudeCodeEvent(ws.root, event),
+          // Claude Code reports real paths (/private/var on macOS), so compare against the real worktree path.
+          onEvent: (event) => onClaudeCodeEvent(fs.realpathSync(ws.root), event),
         });
         ok = !stopped && result.ok;
         summary = [

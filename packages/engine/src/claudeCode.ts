@@ -210,7 +210,8 @@ export interface ClaudeCodeResult {
 
 const ORCA_INSTRUCTIONS = `You are working for Orca on a branch made for this task, in the current folder.
 Make the change, check it (run the tests if the project has them), and finish with a short summary of what you changed.
-Some tool calls need a human's approval; if one is denied, adjust instead of retrying the same call.`;
+Some tool calls need a human's approval; if one is denied, adjust instead of retrying the same call.
+Don't commit or switch branches: Orca commits your changes to this branch when you finish.`;
 
 export async function runClaudeCode(options: ClaudeCodeWorkerOptions): Promise<ClaudeCodeResult> {
   const { root, task, maxTurns, ask, waitWhilePaused, signal, onEvent } = options;
@@ -219,11 +220,17 @@ export async function runClaudeCode(options: ClaudeCodeWorkerOptions): Promise<C
   /** The gate's decision per tool call, so canUseTool asks with the same reason. */
   const decisions = new Map<string, Decision>();
 
-  // Every tool call, including a sub-agent's, passes here first. A failing hook blocks the call.
+  // Every tool call, including a sub-agent's, passes here first. Older Claude Code lets a tool run when its hook
+  // throws (there is no `onFailure: "block"` before 2.1.3xx), so the hook never throws: any error denies the call.
   const gate: HookCallback = async (input) => {
     if (input.hook_event_name !== "PreToolUse") return {};
-    await waitWhilePaused();
-    const decision = decideClaudeTool(root, input.tool_name, input.tool_input);
+    let decision: Decision;
+    try {
+      await waitWhilePaused();
+      decision = decideClaudeTool(root, input.tool_name, input.tool_input);
+    } catch (err) {
+      decision = { verdict: "deny", reason: `Denied: Orca couldn't check this call (${String(err)}).` };
+    }
     decisions.set(input.tool_use_id, decision);
     if (decision.verdict !== "ask") {
       onEvent({ kind: "tool", name: input.tool_name, input: input.tool_input, ...decision } as ClaudeCodeEvent);
@@ -260,7 +267,7 @@ export async function runClaudeCode(options: ClaudeCodeWorkerOptions): Promise<C
       permissionMode: "default",
       systemPrompt: { type: "preset", preset: "claude_code", append: ORCA_INSTRUCTIONS },
       canUseTool,
-      hooks: { PreToolUse: [{ hooks: [gate], onFailure: "block" }] },
+      hooks: { PreToolUse: [{ hooks: [gate] }] },
     },
   });
 
