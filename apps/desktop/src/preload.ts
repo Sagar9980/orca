@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("orca", {
   inspectFolder: (folder: string) => ipcRenderer.invoke("orca:inspect-folder", folder),
   initGit: (folder: string) => ipcRenderer.invoke("orca:init-git", folder),
   setTheme: (theme: string) => ipcRenderer.invoke("orca:set-theme", theme),
+  claudeLogin: () => ipcRenderer.invoke("orca:claude-login"),
   keyStatus: () => ipcRenderer.invoke("orca:key-status"),
   saveKey: (key: string) => ipcRenderer.invoke("orca:key-save", key),
   removeKey: () => ipcRenderer.invoke("orca:key-remove"),

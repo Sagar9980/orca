@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { keyStatus, removeKey, saveKey } from "./apiKey";
 import { initRepo, inspectFolder, isDirectory } from "./folders";
-import { attachRun, commandRun, loadDevKey, startRun, stopAllRuns } from "./runs";
+import { attachRun, claudeLogin, commandRun, loadDevKey, startRun, stopAllRuns } from "./runs";
 
 const DEV_URL = process.env.ORCA_DEV_URL;
 const IS_MAC = process.platform === "darwin";
@@ -137,6 +137,15 @@ function registerBridge() {
       if (theme !== "light" && theme !== "dark" && theme !== "system") return;
       nativeTheme.themeSource = theme;
       applyChrome();
+    }),
+  );
+
+  // The Claude Code login on this computer: who is signed in and with which plan. Never a token.
+  ipcMain.handle(
+    "orca:claude-login",
+    guard(async () => {
+      const { signedIn, email, plan, detail, executable } = await claudeLogin();
+      return { signedIn, email: email ?? null, plan: plan ?? null, detail: detail ?? null, installed: !!executable };
     }),
   );
 
