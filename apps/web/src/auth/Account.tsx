@@ -148,7 +148,12 @@ function ClaudeCodeSection({ bridge }: { bridge: DesktopBridge }) {
   }, [bridge]);
   useEffect(() => void check(), [check]);
 
-  const plan = login?.plan ? login.plan.charAt(0).toUpperCase() + login.plan.slice(1) : null;
+  // Claude Code reports the plan as "Claude Pro" or as "pro", depending on its version.
+  const plan = login?.plan
+    ? /^claude\b/i.test(login.plan)
+      ? login.plan
+      : `Claude ${login.plan.charAt(0).toUpperCase()}${login.plan.slice(1)}`
+    : null;
 
   return (
     <Section
@@ -165,7 +170,7 @@ function ClaudeCodeSection({ bridge }: { bridge: DesktopBridge }) {
                 <span className="min-w-0 truncate">
                   Signed in{login.email ? ` as ${login.email}` : ""}
                   <Badge tone="tone-success" className={tag}>
-                    {plan ? `Claude ${plan}` : "Signed in"}
+                    {plan ?? "Signed in"}
                   </Badge>
                 </span>
               </span>
