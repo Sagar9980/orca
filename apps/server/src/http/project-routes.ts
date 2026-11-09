@@ -58,6 +58,10 @@ const createRun = z.object({
   budgetUsd: z.number().refine((n) => (RUN_BUDGET_CHOICES_USD as readonly number[]).includes(n), "Pick one of the spend limits."),
 });
 
+const updateRun = z.object({
+  status: z.enum(["planning", "running", "paused", "needs_human", "done", "failed"]),
+});
+
 function invalid(reply: FastifyReply, error: z.ZodError) {
   return reply.status(400).send({ error: "invalid", message: error.issues[0]?.message ?? "Check the request and try again." });
 }
@@ -292,5 +296,20 @@ export async function projectRoutes(app: FastifyInstance) {
       .returning();
     await db.update(project).set({ lastOpenedAt: new Date() }).where(eq(project.id, owned.id));
     return reply.status(201).send({ run: toRunSummary(row!) });
+  });
+
+  // The desktop app reports how a run is going; the agents themselves run on the user's computer.
+  app.patch<{ Params: { id: string; runId: string } }>("/api/projects/:id/runs/:runId", async (request, reply) => {
+    const parsed = updateRun.safeParse(request.body);
+    if (!parsed.success) return invalid(reply, parsed.error);
+    const owned = await ownProject(request.session!.user.id, request.params.id);
+    if (!owned) return notFound(reply);
+    const [row] = await db
+      .update(run)
+      .set({ status: parsed.data.status })
+      .where(and(eq(run.id, request.params.runId), eq(run.projectId, owned.id)))
+      .returning();
+    if (!row) return notFound(reply);
+    return { run: toRunSummary(row) };
   });
 }

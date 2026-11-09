@@ -12,6 +12,7 @@ import { formatClock } from "../lib/labels";
 import { RUN_TONE } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { Link } from "../router";
+import { saveRunStatus } from "../projects/store";
 import { createDemoSource } from "../run/demoSource";
 import { createDesktopSource } from "../run/desktopSource";
 import { useRun } from "../run/useRun";
@@ -46,6 +47,12 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
   );
   useEffect(() => () => source.close?.(), [source]);
   const { state, send } = useRun(source);
+  // Report each status change of a real run, so the run list is right after a reload. The demo isn't saved.
+  const liveStatus = state?.run.status;
+  useEffect(() => {
+    if (folder && liveStatus && liveStatus !== run.status) void saveRunStatus(project.id, run.id, liveStatus);
+  }, [folder, liveStatus]);
+
   // Uncommitted work in the project, checked before a run starts: the agent works from the last commit.
   const [changes, setChanges] = useState(0);
   useEffect(() => {
