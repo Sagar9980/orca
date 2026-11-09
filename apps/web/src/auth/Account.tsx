@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type SyntheticEvent, type ReactNode }
 import { OrcaMark } from "../components/icons";
 import { Badge } from "../components/ui/badge";
 import { Button, buttonVariants } from "../components/ui/button";
-import { bridgeError, desktop, type DesktopBridge, type KeyStatus } from "../lib/desktop";
+import { bridgeError, desktop, type ClaudeLoginStatus, type DesktopBridge, type KeyStatus } from "../lib/desktop";
 import { cn } from "../lib/utils";
 import { clearQuery, Link, navigate, useLocation } from "../router";
 import { appUrl, authClient, describeError, type SocialProvider } from "./client";
@@ -75,6 +75,7 @@ export function Account({ session }: { session: SessionData }) {
         {banner && <Notice tone={banner.tone}>{banner.text}</Notice>}
 
         <ProfileSection session={session} />
+        {desktop && <ClaudeCodeSection bridge={desktop} />}
         {desktop && <ApiKeySection bridge={desktop} />}
         <EmailSection session={session} />
         <PasswordSection hasPassword={hasPassword} email={session.user.email} />
@@ -126,6 +127,72 @@ function ProfileSection({ session }: { session: SessionData }) {
           Save name
         </Submit>
       </form>
+    </Section>
+  );
+}
+
+/** The Claude Code login on this computer, which runs come through first. Signing in happens in Claude Code. */
+function ClaudeCodeSection({ bridge }: { bridge: DesktopBridge }) {
+  const [login, setLogin] = useState<ClaudeLoginStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const check = useCallback(async () => {
+    setChecking(true);
+    try {
+      setLogin(await bridge.claudeLogin());
+    } catch (err) {
+      setLogin({ signedIn: false, installed: false, email: null, plan: null, detail: bridgeError(err) });
+    } finally {
+      setChecking(false);
+    }
+  }, [bridge]);
+  useEffect(() => void check(), [check]);
+
+  const plan = login?.plan ? login.plan.charAt(0).toUpperCase() + login.plan.slice(1) : null;
+
+  return (
+    <Section
+      title="Claude Code"
+      description="Runs use the Claude Code login on this computer first, so agents work on your own Claude plan. Your API key below is only used when Claude Code isn't signed in."
+    >
+      <div className={form}>
+        {login === null ? (
+          <p className="text-muted-foreground">Checking Claude Code…</p>
+        ) : login.signedIn ? (
+          <ul className={list}>
+            <li>
+              <span className={item}>
+                <span className="min-w-0 truncate">
+                  Signed in{login.email ? ` as ${login.email}` : ""}
+                  <Badge tone="tone-success" className={tag}>
+                    {plan ? `Claude ${plan}` : "Signed in"}
+                  </Badge>
+                </span>
+              </span>
+            </li>
+          </ul>
+        ) : (
+          <Notice tone="info">
+            {login.installed ? (
+              <>
+                Claude Code isn't signed in. Run <code className="font-mono">claude auth login</code> in a terminal,
+                then check again.
+              </>
+            ) : (
+              <>
+                Install{" "}
+                <a href="https://claude.com/product/claude-code" target="_blank" rel="noreferrer" className="text-primary">
+                  Claude Code
+                </a>{" "}
+                and run <code className="font-mono">claude auth login</code> in a terminal, then check again.
+              </>
+            )}
+          </Notice>
+        )}
+        <Button variant="secondary" size="lg" className="self-start" onClick={check} disabled={checking}>
+          {checking ? "Checking…" : "Check again"}
+        </Button>
+      </div>
     </Section>
   );
 }
