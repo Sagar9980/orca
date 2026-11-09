@@ -18,6 +18,17 @@ export interface KeyStatus {
   last4: string | null;
 }
 
+/** The Claude Code login on this computer. Orca runs agents through it first, before any API key. */
+export interface ClaudeLoginStatus {
+  signedIn: boolean;
+  /** Whether the `claude` program is installed (the SDK's own copy is used otherwise). */
+  installed: boolean;
+  email: string | null;
+  /** "max", "pro", ... */
+  plan: string | null;
+  detail: string | null;
+}
+
 /** What the desktop app's preload script exposes. Absent in a normal browser. */
 export interface DesktopBridge {
   device(): Promise<DeviceInfo>;
@@ -28,6 +39,8 @@ export interface DesktopBridge {
   initGit(folder: string): Promise<FolderInfo>;
   /** Colors the window's own title bar and buttons to match the page. */
   setTheme(theme: "light" | "dark" | "system"): Promise<void>;
+  /** Starts Claude Code without a prompt to see who is signed in. Takes a moment; costs nothing. */
+  claudeLogin(): Promise<ClaudeLoginStatus>;
   keyStatus(): Promise<KeyStatus>;
   /** Checks the key with Anthropic, then stores it encrypted on this computer. */
   saveKey(key: string): Promise<KeyStatus>;

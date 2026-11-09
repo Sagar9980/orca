@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { ClientCommand, RunEvent } from "@orca/shared" with { "resolution-mode": "import" };
-import type { RunHandle } from "@orca/engine" with { "resolution-mode": "import" };
+import type { ClaudeLogin, RunHandle } from "@orca/engine" with { "resolution-mode": "import" };
 import { apiKey } from "./apiKey";
 import { isDirectory } from "./folders";
 
@@ -21,6 +21,14 @@ const engine = () => import("@orca/engine");
 export function loadDevKey() {
   const file = path.join(__dirname, "../../../packages/engine/.env");
   if (!process.env.ANTHROPIC_API_KEY && existsSync(file)) process.loadEnvFile(file);
+}
+
+/**
+ * Whether Claude Code on this computer is signed in, checked fresh each time since the user can sign in or out in a
+ * terminal at any moment. Starts Claude Code without a prompt, so it costs nothing.
+ */
+export async function claudeLogin(): Promise<ClaudeLogin> {
+  return (await engine()).checkClaudeLogin();
 }
 
 interface StartInput {
@@ -61,8 +69,12 @@ export async function startRun(input: unknown, broadcast: (event: RunEvent) => v
   const existing = runs.get(runId);
   if (existing) return existing.events();
   if (!(await isDirectory(folder))) throw new Error("The project folder isn't on this computer.");
+  // The user's own Claude Code login comes first; Orca's own loop on an API key is the fallback.
+  const signedIn = !FAKE_MODEL && (await claudeLogin()).signedIn;
   const key = await apiKey();
-  if (!FAKE_MODEL && !key) throw new Error("Add your Anthropic API key in Account settings to start a run.");
+  if (!FAKE_MODEL && !signedIn && !key) {
+    throw new Error("Sign in to Claude Code (`claude auth login`) or add an Anthropic API key in Account settings.");
+  }
 
   const { fakeClient, startRun } = await engine();
   const handle = startRun({
@@ -71,7 +83,13 @@ export async function startRun(input: unknown, broadcast: (event: RunEvent) => v
     project: folder,
     branch,
     maxUsd: budgetUsd,
-    ...(FAKE_MODEL ? { client: fakeClient() } : key ? { apiKey: key } : {}),
+    ...(FAKE_MODEL
+      ? { client: fakeClient() }
+      : signedIn
+        ? { runner: "claude-code" as const }
+        : key
+          ? { apiKey: key }
+          : {}),
     onEvent: broadcast,
   });
   runs.set(runId, handle);

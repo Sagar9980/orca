@@ -11,3 +11,4 @@ export { runTool, toolDefinitions, type ToolName, type ToolResult } from "./tool
 export { costUsd, DEFAULT_MODEL, MODELS, type Usage } from "./models.js";
 export { startRun, type RunHandle, type StartRunOptions } from "./run.js";
 export { fakeClient } from "./fakeClient.js";
+export { checkClaudeLogin, decideClaudeTool, findClaudeExecutable, type ClaudeLogin } from "./claudeCode.js";

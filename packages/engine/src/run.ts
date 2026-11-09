@@ -11,6 +11,9 @@ import {
   type RunEvent,
   type SubAgent,
 } from "@orca/shared";
+import fs from "node:fs";
+import path from "node:path";
+import { runClaudeCode, type ClaudeCodeEvent } from "./claudeCode.js";
 import { DEFAULT_MODEL } from "./models.js";
 import { buildWorker, type ApprovalAnswer, type ApprovalRequest, type WorkerEvent } from "./worker.js";
 import { closeWorkspace, openWorkspace } from "./workspace.js";
@@ -33,6 +36,11 @@ export interface StartRunOptions {
   model?: string;
   maxUsd: number;
   maxTurns?: number;
+  /**
+   * "claude-code" runs the user's own Claude Code (signed in with `claude auth login`) as the worker; "loop" runs
+   * Orca's own worker graph on an API key. Defaults to "loop".
+   */
+  runner?: "loop" | "claude-code";
   /** The user's Anthropic key; falls back to ANTHROPIC_API_KEY. Never put in events, prompts or logs. */
   apiKey?: string;
   /** Pass `fakeClient()` to try runs without spending anything. */
@@ -61,6 +69,7 @@ export function startRun(options: StartRunOptions): RunHandle {
     model = DEFAULT_MODEL,
     maxUsd,
     maxTurns = 30,
+    runner = "loop",
     apiKey,
     client,
     onEvent,
@@ -69,6 +78,8 @@ export function startRun(options: StartRunOptions): RunHandle {
   let seq = 0;
   let paused = false;
   let stopped = false;
+  /** Ends a Claude Code worker mid-turn; Orca's own loop checks `stopped` between turns instead. */
+  const stopSignal = new AbortController();
   let wake: (() => void) | null = null;
   /** Open approval requests: request id -> the call's answer. */
   const waiting = new Map<string, (approved: boolean) => void>();
@@ -164,6 +175,32 @@ export function startRun(options: StartRunOptions): RunHandle {
     }
   }
 
+  function onClaudeCodeEvent(root: string, event: ClaudeCodeEvent) {
+    switch (event.kind) {
+      case "started":
+        status("working", { state: "working", activity: `Claude Code (${event.model}) is reading the code` });
+        break;
+      case "text":
+        lastText = event.text;
+        message(WORKER, ORCHESTRATOR, "reply", event.text);
+        break;
+      case "tool":
+        if (event.verdict === "allow")
+          status("working", { state: "working", activity: doingText(event.name, event.input, root) });
+        else
+          message(
+            WORKER,
+            ORCHESTRATOR,
+            "issue",
+            `Not run: ${doingText(event.name, event.input, root)}. ${event.reason}`,
+          );
+        break;
+      case "tokens":
+        emit("subagent.updated", { subAgentId: WORKER, patch: { tokens: event.tokens } });
+        break;
+    }
+  }
+
   async function run() {
     emit("run.started", {
       run: {
@@ -191,7 +228,7 @@ export function startRun(options: StartRunOptions): RunHandle {
         id: WORKER,
         agentId: AGENT,
         name: "Worker",
-        role: model,
+        role: runner === "claude-code" ? "Claude Code" : model,
         state: "working",
         activity: "Reading the code",
         waitingOn: null,
@@ -203,32 +240,59 @@ export function startRun(options: StartRunOptions): RunHandle {
     let summary = "";
     let ok = false;
     try {
-      const worker = buildWorker({ root: ws.root, model, maxTurns, maxUsd, apiKey, ...(client ? { client } : {}) });
-      const thread = { configurable: { thread_id: runId } };
-      let input: Parameters<typeof worker.stream>[0] = { messages: [{ role: "user", content: title }] };
-      while (!stopped) {
-        const stream = await worker.stream(input, {
-          ...thread,
-          streamMode: "custom",
-          interruptBefore: ["model"],
-          recursionLimit: maxTurns * 3 + 5,
+      if (runner === "claude-code") {
+        const result = await runClaudeCode({
+          root: ws.root,
+          task: title,
+          maxTurns,
+          ask: async (call) => (await askHuman({ calls: [call] }))[call.id] === true,
+          waitWhilePaused,
+          signal: stopSignal.signal,
+          // Claude Code reports real paths (/private/var on macOS), so compare against the real worktree path.
+          onEvent: (event) => onClaudeCodeEvent(fs.realpathSync(ws.root), event),
         });
-        for await (const event of stream) onWorkerEvent(event as WorkerEvent);
+        ok = !stopped && result.ok;
+        summary = [
+          stopped ? "Stopped." : "",
+          ok ? result.text : `Stopped: ${result.text}`,
+          `${result.turns} turns on Claude Code with your Claude login.`,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      } else {
+        const worker = buildWorker({ root: ws.root, model, maxTurns, maxUsd, apiKey, ...(client ? { client } : {}) });
+        const thread = { configurable: { thread_id: runId } };
+        let input: Parameters<typeof worker.stream>[0] = { messages: [{ role: "user", content: title }] };
+        while (!stopped) {
+          const stream = await worker.stream(input, {
+            ...thread,
+            streamMode: "custom",
+            interruptBefore: ["model"],
+            recursionLimit: maxTurns * 3 + 5,
+          });
+          for await (const event of stream) onWorkerEvent(event as WorkerEvent);
 
-        const snapshot = await worker.getState(thread);
-        const pending = snapshot.tasks.flatMap((t) => t.interrupts);
-        if (pending.length) input = new Command({ resume: await askHuman(pending[0].value as ApprovalRequest) });
-        else if (snapshot.next.includes("model")) {
-          await waitWhilePaused();
-          input = null;
-        } else break;
+          const snapshot = await worker.getState(thread);
+          const pending = snapshot.tasks.flatMap((t) => t.interrupts);
+          if (pending.length) input = new Command({ resume: await askHuman(pending[0].value as ApprovalRequest) });
+          else if (snapshot.next.includes("model")) {
+            await waitWhilePaused();
+            input = null;
+          } else break;
+        }
+        const { stopReason, limit, turns, spentUsd } = (await worker.getState(thread)).values;
+        ok = !stopped && !limit && stopReason === "end_turn";
+        const why = stopped
+          ? "Stopped."
+          : limit
+            ? `Stopped at the ${limit} limit.`
+            : ok
+              ? ""
+              : `Stopped: ${stopReason}.`;
+        summary = [why, ok ? lastText : "", `${turns} turns, $${spentUsd.toFixed(4)} on ${model}.`]
+          .filter(Boolean)
+          .join(" ");
       }
-      const { stopReason, limit, turns, spentUsd } = (await worker.getState(thread)).values;
-      ok = !stopped && !limit && stopReason === "end_turn";
-      const why = stopped ? "Stopped." : limit ? `Stopped at the ${limit} limit.` : ok ? "" : `Stopped: ${stopReason}.`;
-      summary = [why, ok ? lastText : "", `${turns} turns, $${spentUsd.toFixed(4)} on ${model}.`]
-        .filter(Boolean)
-        .join(" ");
     } catch (err) {
       summary = errorText(err);
       message(WORKER, ORCHESTRATOR, "issue", summary);
@@ -259,6 +323,7 @@ export function startRun(options: StartRunOptions): RunHandle {
     done,
     stop() {
       stopped = true;
+      stopSignal.abort();
       for (const [, answer] of waiting) answer(false);
       waiting.clear();
       nudge();
@@ -304,9 +369,27 @@ function str(input: unknown, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-/** What the worker is doing, for its activity line. */
-function doingText(name: string, input: unknown): string {
+/** What the worker is doing, for its activity line. `root` shortens Claude Code's absolute paths. */
+function doingText(name: string, input: unknown, root?: string): string {
+  const file = () => (root ? path.relative(root, str(input, "file_path")) : str(input, "file_path"));
   switch (name) {
+    case "Read":
+      return `Reading ${file()}`;
+    case "Grep":
+      return `Searching for ${str(input, "pattern")}`;
+    case "Glob":
+      return `Listing ${str(input, "pattern")}`;
+    case "Edit":
+    case "MultiEdit":
+      return `Editing ${file()}`;
+    case "Write":
+      return `Writing ${file()}`;
+    case "Bash":
+      return `Running ${str(input, "command")}`;
+    case "WebFetch":
+      return `Opening ${str(input, "url")}`;
+    case "WebSearch":
+      return `Searching the web for ${str(input, "query")}`;
     case "read_file":
       return `Reading ${str(input, "path")}`;
     case "list_files":
@@ -326,7 +409,17 @@ function doingText(name: string, input: unknown): string {
 function askText(name: string, input: unknown): string {
   switch (name) {
     case "run_command":
+    case "Bash":
       return `Run \`${str(input, "command")}\`?`;
+    case "Edit":
+    case "MultiEdit":
+      return `Edit ${str(input, "file_path")}?`;
+    case "Write":
+      return `Write ${str(input, "file_path")}?`;
+    case "WebFetch":
+      return `Open ${str(input, "url")}?`;
+    case "WebSearch":
+      return `Search the web for "${str(input, "query")}"?`;
     case "edit_file":
       return `${str(input, "old_string") ? "Edit" : "Create"} ${str(input, "path")}?`;
     default:
