@@ -235,7 +235,20 @@ export function startRun(options: StartRunOptions): RunHandle {
         tokens: 0,
       },
     });
-    message(ORCHESTRATOR, WORKER, "prompt", title);
+    if (ws.dirty) {
+      message(
+        ORCHESTRATOR,
+        HUMAN,
+        "issue",
+        "You have uncommitted changes. The agent started from your last commit, so it can't see them.",
+      );
+    }
+    // A fresh checkout has no installed packages or .env files; say which were brought over, so the agent doesn't
+    // reinstall them or go looking.
+    const task = ws.copied.length
+      ? `${title}\n\nAlready in place from the project (not in git): ${ws.copied.join(", ")}.`
+      : title;
+    message(ORCHESTRATOR, WORKER, "prompt", task);
 
     let summary = "";
     let ok = false;
@@ -243,7 +256,7 @@ export function startRun(options: StartRunOptions): RunHandle {
       if (runner === "claude-code") {
         const result = await runClaudeCode({
           root: ws.root,
-          task: title,
+          task,
           maxTurns,
           ask: async (call) => (await askHuman({ calls: [call] }))[call.id] === true,
           waitWhilePaused,
@@ -262,7 +275,7 @@ export function startRun(options: StartRunOptions): RunHandle {
       } else {
         const worker = buildWorker({ root: ws.root, model, maxTurns, maxUsd, apiKey, ...(client ? { client } : {}) });
         const thread = { configurable: { thread_id: runId } };
-        let input: Parameters<typeof worker.stream>[0] = { messages: [{ role: "user", content: title }] };
+        let input: Parameters<typeof worker.stream>[0] = { messages: [{ role: "user", content: task }] };
         while (!stopped) {
           const stream = await worker.stream(input, {
             ...thread,
