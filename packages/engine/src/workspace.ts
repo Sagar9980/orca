@@ -28,6 +28,61 @@ export interface Workspace {
   root: string;
   /** The repo had uncommitted changes. They stay where they are and aren't part of the run. */
   dirty: boolean;
+  /** Ignored folders brought over from the repo so the project builds and runs: installed packages and `dist`. */
+  copied: string[];
+  /** Working live in the user's own folder on its current branch: no worktree, no new branch, nothing committed. */
+  inPlace: boolean;
+}
+
+/**
+ * Folders that projects keep out of git but need in order to run: installed packages, and `dist`, the built output
+ * that packages in a monorepo import from each other. Only ones git ignores are copied.
+ */
+const DEPENDENCY_DIRS = new Set(["node_modules", ".venv", "venv", "vendor", "dist"]);
+/**
+ * Brings the repo's installed packages into the worktree, since a fresh checkout has none and a real project can't
+ * build or run its tests without them. .env files are left out on purpose: any command or script in the run could read
+ * them and show the secrets to the model, so a worktree run never has them (see policy.ts). Each is the run's own copy, so changes in the run never reach
+ * the user's: on macOS a copy-on-write clone (instant, nearly no disk), elsewhere a plain copy that keeps the
+ * symlinks inside it as they are (pnpm's node_modules is built from relative links).
+ */
+async function bringIgnoredFiles(repo: string, worktree: string): Promise<string[]> {
+  const listed = await git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z");
+  const wanted = listed
+    .split("\0")
+    .filter(Boolean)
+    .map((entry) => ({ rel: entry.replace(/\/$/, ""), isDir: entry.endsWith("/") }))
+    .filter(({ rel, isDir }) => isDir && DEPENDENCY_DIRS.has(path.basename(rel)));
+  // The list above follows the user's checkout, but the worktree may start from a branch with other ignore rules (or
+  // the user may have uncommitted .gitignore edits). Copy only what the worktree ignores too, so nothing copied can be
+  // committed to the run's branch.
+  const ignoredHere = await worktreeIgnores(
+    worktree,
+    wanted.map(({ rel, isDir }) => (isDir ? `${rel}/` : rel)),
+  );
+  const copied: string[] = [];
+  for (const { rel, isDir } of wanted.filter(({ rel, isDir }) => ignoredHere.has(isDir ? `${rel}/` : rel))) {
+    const from = path.join(repo, rel);
+    const to = path.join(worktree, rel);
+    try {
+      await fs.mkdir(path.dirname(to), { recursive: true });
+      if (process.platform === "darwin") await exec("cp", ["-cR", from, to]);
+      else if (isDir) await fs.cp(from, to, { recursive: true, verbatimSymlinks: true });
+      else await fs.copyFile(from, to);
+      copied.push(rel);
+    } catch {
+      // A missing or unreadable entry only means the agent installs it itself if it needs it.
+    }
+  }
+  return copied;
+}
+
+/** Which of `paths` (folders end in "/") the worktree's own ignore rules ignore. */
+async function worktreeIgnores(worktree: string, paths: string[]): Promise<Set<string>> {
+  if (!paths.length) return new Set();
+  // Exit code 1 means none is ignored; quotePath off keeps unusual names as they are.
+  const out = await git(worktree, "-c", "core.quotePath=false", "check-ignore", "--", ...paths).catch(() => "");
+  return new Set(out.split("\n").filter(Boolean));
 }
 
 /** `from` is the branch or commit to start from; the repo's current HEAD when left out. */
@@ -47,9 +102,38 @@ export async function openWorkspace(project: string, runId: string, from?: strin
 
   const dirty = (await git(repo, "status", "--porcelain")) !== "";
   const branch = `orca/run-${runId}`;
+  // The run already ran once (e.g. before the app kept runs across restarts). Its branch holds that work, so it is
+  // never reused or reset; the user starts a new run instead.
+  const taken = await git(repo, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`).catch(() => "");
+  if (taken) {
+    throw new Error(`This run already ran before, and its work is on branch ${branch}. Start a new run to try again.`);
+  }
   const worktree = path.join(os.tmpdir(), "orca-worktrees", `${path.basename(repo)}-${runId}`);
   await git(repo, "worktree", "add", "-q", "-b", branch, worktree, base);
-  return { repo, branch, base, worktree, root: path.join(worktree, path.relative(repo, realProject)), dirty };
+  const copied = await bringIgnoredFiles(repo, worktree);
+  const root = path.join(worktree, path.relative(repo, realProject));
+  return { repo, branch, base, worktree, root, dirty, copied, inPlace: false };
+}
+
+/**
+ * Works live in the user's own folder on the branch it is on, like an agent in a terminal: the user sees changes as
+ * they happen and reviews them before committing. Nothing is copied, branched or committed. `from` must be the
+ * folder's current branch, so the run never switches the user's checkout.
+ */
+export async function openFolder(project: string, from?: string): Promise<Workspace> {
+  const realProject = await fs.realpath(project);
+  const repo = await git(realProject, "rev-parse", "--show-toplevel").catch(() => {
+    throw new Error(`${project} is not in a git repository. Run \`git init\` first.`);
+  });
+  const branch = await git(repo, "symbolic-ref", "--short", "-q", "HEAD").catch(() => "");
+  if (from && branch !== from) {
+    throw new Error(
+      `Your folder is on ${branch || "a detached commit"}, not ${from}. Switch to ${from} first, or run in a worktree.`,
+    );
+  }
+  const base = await git(repo, "rev-parse", "HEAD").catch(() => "");
+  const dirty = (await git(repo, "status", "--porcelain")) !== "";
+  return { repo, branch, base, worktree: repo, root: realProject, dirty, copied: [], inPlace: true };
 }
 
 /**
@@ -59,7 +143,9 @@ export async function openWorkspace(project: string, runId: string, from?: strin
  */
 export async function closeWorkspace(ws: Workspace, message: string): Promise<{ committed: boolean }> {
   await git(ws.worktree, "add", "-A");
-  if ((await git(ws.worktree, "status", "--porcelain")) !== "") {
+  // Never commit what was copied in, even if the agent changed .gitignore during the run.
+  if (ws.copied.length) await git(ws.worktree, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ...ws.copied);
+  if ((await git(ws.worktree, "diff", "--cached", "--name-only")) !== "") {
     await git(ws.worktree, ...ORCA_COMMIT, "commit", "-q", "--no-verify", "-m", message);
   }
   // --force only drops ignored files such as node_modules; everything tracked is committed above.

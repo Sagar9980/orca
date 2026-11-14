@@ -12,6 +12,7 @@ import { formatClock } from "../lib/labels";
 import { RUN_TONE } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { Link } from "../router";
+import { saveRunStatus } from "../projects/store";
 import { createDemoSource } from "../run/demoSource";
 import { createDesktopSource } from "../run/desktopSource";
 import { useRun } from "../run/useRun";
@@ -30,6 +31,7 @@ const STATUS_TEXT: Record<string, string> = {
 export function Workspace({ project, run }: { project: Project; run: RunSummary }) {
   const shell = useShell();
   const [startError, setStartError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   // In the desktop app, with the project's folder on this computer, a real agent works on it. Anywhere else the
   // run plays the example team. One source per run.
   const folder = desktop ? project.folder : null;
@@ -38,7 +40,14 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
       desktop && folder
         ? createDesktopSource(
             desktop,
-            { runId: run.id, title: run.title, folder, branch: run.branch, budgetUsd: run.budgetUsd },
+            {
+              runId: run.id,
+              title: run.title,
+              folder,
+              branch: run.branch,
+              budgetUsd: run.budgetUsd,
+              worktree: run.worktree !== false,
+            },
             setStartError,
           )
         : createDemoSource(),
@@ -46,6 +55,22 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
   );
   useEffect(() => () => source.close?.(), [source]);
   const { state, send } = useRun(source);
+  // Report each status change of a real run, so the run list is right after a reload. The demo isn't saved.
+  const liveStatus = state?.run.status;
+  useEffect(() => {
+    if (folder && liveStatus && liveStatus !== run.status) void saveRunStatus(project.id, run.id, liveStatus);
+  }, [folder, liveStatus]);
+
+  // Uncommitted work in the project, checked before a run starts: the agent works from the last commit.
+  const [changes, setChanges] = useState(0);
+  useEffect(() => {
+    if (!desktop || !folder || state) return;
+    let live = true;
+    desktop.inspectFolder(folder).then((info) => live && setChanges(info?.changes ?? 0), () => {});
+    return () => {
+      live = false;
+    };
+  }, [folder, Boolean(state)]);
   const [selectedId, setSelectedId] = useState(() => readPref("orca-agent"));
 
   const live = state?.run;
@@ -94,10 +119,31 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
         </div>
         {live && (
           <div className="flex flex-none items-center gap-4 font-mono text-xs leading-none whitespace-nowrap text-muted-foreground tabular-nums max-[780px]:order-3 max-[780px]:w-full [&_b]:font-medium [&_b]:text-foreground [&_svg]:size-3 [&_svg]:text-faint [&>span]:inline-flex [&>span]:items-center [&>span]:gap-[5px]">
-            <span title={`Started from ${run.branch}`}>
-              <BranchIcon />
-              <b>{run.branch}</b>
-            </span>
+            {live.workBranch ? (
+              <button
+                type="button"
+                title={
+                  live.inPlace
+                    ? "The agent works live in your folder on this branch; its changes are left uncommitted. Click to copy the name."
+                    : `Orca's branch, made from ${run.branch}. Its changes are here. Click to copy the name.`
+                }
+                className="inline-flex items-center gap-[5px] hover:text-foreground"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(live.workBranch!).then(() => setCopied(true));
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+              >
+                <BranchIcon />
+                <b>{copied ? "Copied" : live.workBranch}</b>
+                <span className="text-faint">{live.inPlace ? "in your folder" : `from ${run.branch}`}</span>
+              </button>
+            ) : (
+              <span title={live.workBranch === null ? "The run made no changes." : `Started from ${run.branch}`}>
+                <BranchIcon />
+                <b>{run.branch}</b>
+                {live.workBranch === null && <span className="text-faint">no changes</span>}
+              </span>
+            )}
             <span className="max-[960px]:hidden! max-[780px]:inline-flex!">
               Elapsed <b>{formatClock((live.finishedAt ? Date.parse(live.finishedAt) : now) - Date.parse(live.startedAt))}</b>
             </span>
@@ -150,11 +196,28 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
               <p>{state.run.summary ?? "Starting…"}</p>
             ) : (
               <>
-                <p>
-                  A Builder agent will work on {project.name} on its own <b>orca/run-*</b> branch, made from{" "}
-                  <b>{run.branch}</b>. Your checkout isn't touched. It asks you before running commands or creating
-                  files, and stops at ${run.budgetUsd}.
-                </p>
+                {run.worktree === false ? (
+                  <p>
+                    A Builder agent will work live in your {project.name} folder on <b>{run.branch}</b>, without a
+                    worktree. You'll see its changes as it makes them, and they're left uncommitted for you to review.
+                    It edits files and runs commands on its own, asks you before installing packages, going online or
+                    reading .env files, and stops at ${run.budgetUsd}.
+                  </p>
+                ) : (
+                  <p>
+                    A Builder agent will work on {project.name} in a worktree on its own <b>orca/run-*</b> branch, made
+                    from <b>{run.branch}</b>. Your folder isn't touched. It edits files and runs commands on its own,
+                    asks you before installing packages, going online or reading .env files, and stops at $
+                    {run.budgetUsd}.
+                  </p>
+                )}
+                {changes > 0 && run.worktree !== false && (
+                  <p className="rounded-lg border border-warning/45 bg-warning/10 px-3.5 py-2.5 text-left text-sm">
+                    You have {changes} uncommitted {changes === 1 ? "change" : "changes"} in {project.name}. The agent
+                    starts from your last commit, so it won't see {changes === 1 ? "it" : "them"}. Commit first if
+                    the task depends on {changes === 1 ? "it" : "them"}.
+                  </p>
+                )}
                 <Button
                   size="lg"
                   onClick={() => {

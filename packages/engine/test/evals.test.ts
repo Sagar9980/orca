@@ -60,8 +60,8 @@ describe("runTask", () => {
     );
     const events: WorkerEvent[] = [];
     const result = await runTask(slug, 1, { ...options, client, onEvent: (e) => events.push(e) });
-    // The command was asked about and approved by the eval, so the cheat really ran and passed before grading.
-    expect(result.approvals).toBe(1);
+    // Ordinary commands run without asking, so the cheat really ran and passed before grading.
+    expect(result.approvals).toBe(0);
     const command = events.find((e) => e.kind === "tool_result" && e.name === "run_command");
     expect(command).toMatchObject({ isError: false, content: expect.stringContaining("exit code 0") });
     expect(result.passed).toBe(false);

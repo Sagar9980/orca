@@ -84,7 +84,8 @@ app alongside the CLI, which stays as a quick way to debug the engine on its own
 ### Phase B: Human gate and limits
 
 - [x] One `gate` node that **every** tool call passes through, before the `tools` node. Tools have no other way to run.
-- [x] Policy: allow reads, ask for commands and anything outside the normal edit flow, deny dangerous commands.
+- [x] Policy: allow reads, edits and ordinary commands inside the run's worktree; ask for installs, the network, git
+      history, `.env` files and paths outside the project; deny dangerous commands.
 - [x] `interrupt()` for "ask", and a terminal y/n to resume. Add `MemorySaver`.
 - [x] Turn limit, retry limit, and a dollar budget from the token usage in each response.
 

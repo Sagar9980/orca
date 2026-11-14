@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type SyntheticEvent } from "react";
 import { DEFAULT_RUN_BUDGET_USD, RUN_BUDGET_CHOICES_USD, type Project } from "@orca/shared";
 import { Notice } from "../auth/ui";
-import { ArrowUpIcon, BranchIcon, CaretIcon, CoinIcon, PlusIcon } from "../components/icons";
+import { ArrowUpIcon, BranchIcon, CaretIcon, CheckIcon, CoinIcon, PlusIcon } from "../components/icons";
 import { Spinner } from "../components/ui/spinner";
 import { cn } from "../lib/utils";
 import { desktop } from "../lib/desktop";
+import { readPref, writePref } from "../lib/hooks";
 import { navigate } from "../router";
 import { startRun } from "../projects/store";
 import { Menu, MenuHead, MenuItem, MenuNote, Popover } from "./Popover";
@@ -29,6 +30,11 @@ export function Composer({ projects, project, onSelectProject }: Props) {
   const [branch, setBranch] = useState(project?.defaultBranch ?? "main");
   const [branches, setBranches] = useState<string[]>([]);
   const [budget, setBudget] = useState<number>(DEFAULT_RUN_BUDGET_USD);
+  // Worktree (the default): the agent works in a separate copy on its own orca/run-* branch. Off: it works live in
+  // the project folder on the branch the folder is on, and leaves its changes there uncommitted.
+  const [worktree, setWorktree] = useState(() => readPref("orca-worktree") !== "off");
+  /** The branch the project folder is on now; a run without a worktree works on it. */
+  const [current, setCurrent] = useState<string | null>(null);
   const [menu, setMenu] = useState<OpenMenu>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,11 +47,16 @@ export function Composer({ projects, project, onSelectProject }: Props) {
   useEffect(() => {
     setBranch(project?.defaultBranch ?? "main");
     setBranches([]);
+    setCurrent(null);
     if (!desktop || !project?.folder) return;
     let live = true;
     desktop
       .inspectFolder(project.folder)
-      .then((info) => live && info && setBranches(info.branches))
+      .then((info) => {
+        if (!live || !info) return;
+        setBranches(info.branches);
+        setCurrent(info.branch);
+      })
       .catch(() => {});
     return () => {
       live = false;
@@ -66,6 +77,10 @@ export function Composer({ projects, project, onSelectProject }: Props) {
   const title = draft.trim();
   const canSend = Boolean(project) && title.length >= 3 && !busy;
   const branchList = Array.from(new Set([project?.defaultBranch ?? "main", ...branches]));
+  // The worktree choice only matters for a real run on a folder on this computer.
+  const local = Boolean(desktop && project?.folder);
+  const inFolder = local && !worktree;
+  const runBranch = inFolder ? (current ?? branch) : branch;
 
   const submit = async (e?: SyntheticEvent) => {
     e?.preventDefault();
@@ -73,7 +88,7 @@ export function Composer({ projects, project, onSelectProject }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const run = await startRun(project.id, { title, branch, budgetUsd: budget });
+      const run = await startRun(project.id, { title, branch: runBranch, budgetUsd: budget, worktree: !inFolder });
       setDraft("");
       navigate(`/p/${project.slug}/r/${run.id}`);
     } catch (err) {
@@ -129,12 +144,42 @@ export function Composer({ projects, project, onSelectProject }: Props) {
               type="button"
               aria-haspopup="dialog"
               aria-expanded={menu === "branch"}
-              aria-label={`Start from branch ${branch}`}
+              aria-label={inFolder ? `Works on your folder's branch, ${runBranch}` : `Start from branch ${branch}`}
+              title={inFolder ? "Without a worktree, the run works on the branch your folder is on." : undefined}
+              disabled={inFolder}
               onClick={() => toggle("branch")}
             >
               <BranchIcon />
-              <span className={cn(chipText, "font-mono text-xs")}>{branch}</span>
-              <CaretIcon />
+              <span className={cn(chipText, "font-mono text-xs")}>{runBranch}</span>
+              {!inFolder && <CaretIcon />}
+            </button>
+          )}
+          {local && (
+            <button
+              className={cn(chip, "[&_svg]:text-primary-foreground")}
+              type="button"
+              role="switch"
+              aria-checked={worktree}
+              title={
+                worktree
+                  ? "On: the agent works in a separate worktree on its own orca/run-* branch, and your folder isn't touched."
+                  : "Off: the agent works live in your folder on its current branch, and leaves the changes uncommitted for you."
+              }
+              onClick={() => {
+                setWorktree(!worktree);
+                writePref("orca-worktree", worktree ? "off" : "on");
+              }}
+            >
+              <span
+                className={cn(
+                  "grid size-[15px] place-items-center rounded-[4px] border border-border-strong [&_svg]:size-[11px]!",
+                  worktree && "border-primary bg-primary",
+                )}
+                aria-hidden="true"
+              >
+                {worktree && <CheckIcon />}
+              </span>
+              <span className={chipText}>Worktree</span>
             </button>
           )}
           <button

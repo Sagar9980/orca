@@ -31,13 +31,13 @@ describe("gate", () => {
   it("pauses for asked calls, runs only what was approved, and emits each call once", async () => {
     const calls = [
       { type: "tool_use", id: "read", name: "read_file", input: { path: "package.json" } },
-      { type: "tool_use", id: "test", name: "run_command", input: { command: "echo tests ran" } },
+      { type: "tool_use", id: "test", name: "run_command", input: { command: "git stash list; echo tests ran" } },
       { type: "tool_use", id: "push", name: "run_command", input: { command: "git push" } },
       {
         type: "tool_use",
         id: "create",
         name: "edit_file",
-        input: { path: "evil.js", old_string: "", new_string: "x" },
+        input: { path: ".env", old_string: "", new_string: "x" },
       },
     ];
     const r = await run((n) => (n === 1 ? { stop_reason: "tool_use", usage, content: calls } : endTurn()));

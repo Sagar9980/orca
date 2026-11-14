@@ -1,4 +1,4 @@
-import { index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { ProjectSource, RunStatus } from "@orca/shared";
 import { user } from "./auth-schema.js";
 
@@ -81,6 +81,8 @@ export const run = pgTable(
     status: text("status").$type<RunStatus>().notNull().default("planning"),
     branch: text("branch").notNull(),
     budgetCents: integer("budget_cents").notNull(),
+    /** false: the run works live in the project folder on its current branch instead of in a worktree. */
+    worktree: boolean("worktree").notNull().default(true),
     createdAt: createdAt(),
     updatedAt: ts("updated_at")
       .defaultNow()

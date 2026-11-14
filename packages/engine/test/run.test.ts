@@ -46,7 +46,7 @@ describe("startRun", () => {
     expect(state.run.summary).toContain("Changes are on branch orca/run-r1");
     expect(Object.keys(state.agents)).toEqual(["builder"]);
     expect(Object.keys(state.subAgents)).toEqual(["builder.worker"]);
-    expect(Object.values(state.humanRequests).map((r) => r.type)).toEqual(["approval", "approval"]);
+    expect(Object.values(state.humanRequests).map((r) => r.type)).toEqual(["approval"]);
     expect(openHumanRequests(state)).toHaveLength(0);
     expect(state.run.budget.spentUsd).toBeGreaterThan(0);
     expect(handle.events()).toEqual(events);
@@ -70,8 +70,12 @@ describe("startRun", () => {
 
   it("declined calls don't run", async () => {
     const { state } = await fakeRun("r3", answerAll("Declined"));
-    expect(state.run.summary).toContain("No changes were made");
-    expect(git(repo, "branch", "--list", "orca/run-r3")).toBe("");
+    const issues = Object.values(state.messages)
+      .filter((m) => m.kind === "issue")
+      .map((m) => m.text);
+    expect(issues).toContainEqual(expect.stringMatching(/^Not run: Running git stash list\. Denied by the human/));
+    // Creating a file needs no yes any more, so the run still has that change on its branch.
+    expect(git(repo, "show", "--name-only", "--format=", "orca/run-r3")).toBe("ORCA_DEMO.md");
   });
 
   it("stop ends a run that is waiting on the human", async () => {

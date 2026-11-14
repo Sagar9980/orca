@@ -24,7 +24,8 @@ export function AgentRail({ state, selectedId, onSelect }: Props) {
   const agents = Object.values(state.agents);
   const requests = openHumanRequests(state);
   const first = requests[0];
-  const running = agents.filter((a) => a.status !== "done" && a.status !== "queued").length;
+  // Nothing runs once the run has ended, even agents it stopped mid-way.
+  const running = state.run.finishedAt ? 0 : agents.filter((a) => a.status !== "done" && a.status !== "queued").length;
 
   return (
     <aside className="flex min-w-0 flex-col gap-5">

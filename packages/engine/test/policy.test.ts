@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "../src/policy.js";
 import { FIXTURE } from "./helpers.js";
@@ -11,21 +14,49 @@ describe("policy", () => {
     expect(verdict("search", { pattern: "x", path: "." })).toBe("allow");
   });
 
-  it("allows edits to existing files and asks for new ones", () => {
+  it("allows editing and creating any project file except secrets", () => {
     expect(verdict("edit_file", { path: "src/cart.js", old_string: "a", new_string: "b" })).toBe("allow");
-    expect(verdict("edit_file", { path: "src/new.js", old_string: "", new_string: "x" })).toBe("ask");
-    expect(verdict("edit_file", { path: "src/missing.js", old_string: "a", new_string: "b" })).toBe("ask");
-  });
-
-  it("asks before changing config and dot files", () => {
-    expect(verdict("edit_file", { path: "package.json", old_string: "a", new_string: "b" })).toBe("ask");
+    expect(verdict("edit_file", { path: "src/new.js", old_string: "", new_string: "x" })).toBe("allow");
+    expect(verdict("edit_file", { path: "package.json", old_string: "a", new_string: "b" })).toBe("allow");
+    expect(verdict("edit_file", { path: ".gitignore", old_string: "a", new_string: "b" })).toBe("allow");
     expect(verdict("edit_file", { path: ".env", old_string: "a", new_string: "b" })).toBe("ask");
-    expect(verdict("edit_file", { path: "pnpm-lock.yaml", old_string: "a", new_string: "b" })).toBe("ask");
   });
 
-  it("asks for ordinary commands", () => {
-    expect(verdict("run_command", { command: "npm test" })).toBe("ask");
-    expect(verdict("run_command", { command: "git status --short" })).toBe("ask");
+  it.each([
+    "npm test",
+    "git status --short",
+    "ls -R src | head -50",
+    "cat src/*.js test/*.js",
+    "sed -i '' 's/a/b/' src/cart.js && npm test",
+    "rm -rf dist",
+    "git add -A && git commit -qm wip",
+    "node scripts/build.js > /dev/null 2>&1",
+    "sed -i '' 's|/[^a-z0-9]+/,|/[^a-z0-9]+/g,|' src/slug.js",
+  ])("runs %s without asking", (command) => {
+    expect(verdict("run_command", { command })).toBe("allow");
+  });
+
+  it.each([
+    ["npm install left-pad", "installs packages"],
+    ["pnpm add zod", "installs packages"],
+    ["pip install requests", "installs packages"],
+    ["npx -y create-thing", "installs packages"],
+    ["curl https://example.com", "uses the network"],
+    ["git pull", "uses the network"],
+    ["git checkout main", "changes git branches or history"],
+    ["git stash list", "changes git branches or history"],
+    ["cat .env", "touches a secrets file"],
+    ["grep KEY apps/web/.env.local", "touches a secrets file"],
+    ["cat /etc/hosts", "outside the project"],
+  ])("asks before %s", (command, why) => {
+    const d = decide(FIXTURE, "run_command", { command });
+    expect(d.verdict).toBe("ask");
+    expect(d.reason).toContain(why);
+  });
+
+  it("doesn't ask for an absolute path inside the project", () => {
+    expect(verdict("run_command", { command: `ls ${FIXTURE}/src` })).toBe("allow");
+    expect(verdict("run_command", { command: "cat .env.example" })).toBe("allow");
   });
 
   it.each([
@@ -50,5 +81,31 @@ describe("policy", () => {
 
   it("denies unknown tools", () => {
     expect(verdict("delete_everything", {})).toBe("deny");
+  });
+
+  it("asks before reading a secrets file", () => {
+    expect(verdict("read_file", { path: ".env" })).toBe("ask");
+    expect(verdict("read_file", { path: "apps/web/.env.local" })).toBe("ask");
+    expect(verdict("read_file", { path: ".env.example" })).toBe("allow");
+  });
+
+  it("asks before any command when the project holds a secrets file a script could read", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "orca-secrets-"));
+    try {
+      const run = (command: string) => decide(dir, "run_command", { command });
+      await fs.writeFile(path.join(dir, ".env.example"), "TOKEN=\n");
+      await fs.mkdir(path.join(dir, "node_modules/pkg"), { recursive: true });
+      await fs.writeFile(path.join(dir, "node_modules/pkg/.env"), "x\n");
+      expect(run("npm test").verdict).toBe("allow");
+
+      await fs.mkdir(path.join(dir, "apps/web"), { recursive: true });
+      await fs.writeFile(path.join(dir, "apps/web/.env.local"), "TOKEN=secret\n");
+      expect(run("npm test")).toEqual({ verdict: "ask", reason: "could read the project's .env secrets" });
+      expect(run(`node -e "console.log(require('fs').readFileSync('apps/web/.env.local', 'utf8'))"`).verdict).toBe(
+        "ask",
+      );
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

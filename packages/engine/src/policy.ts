@@ -25,24 +25,84 @@ const DENIED_COMMANDS: [RegExp, string][] = [
   [/(^|[\s'"=])(~|\$HOME)(\/|\s|$)|\.\.\//, "reaches outside the project"],
 ];
 
-/** Files the normal edit flow doesn't touch. Changing them needs a yes. */
-const SENSITIVE_FILES = /(^|\/)(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|\.[^/]+)$/;
+/**
+ * Local secrets files (.env, .env.local, ...), copied into the run so the project works. Reading one needs a yes, so
+ * secrets reach the model only when the human agrees. Example and template files are fine.
+ */
+export const SECRETS_FILE = /(^|\/)\.env(\.(?!example$|sample$|template$)[^/]+)?$/;
+
+/**
+ * Commands that reach beyond the run's own copy of the project. Everything else runs without asking when the project
+ * holds no secrets files: the agent works in a throwaway worktree on its own branch, so ordinary commands (tests,
+ * builds, scripts, editing with sed) can't harm the user's project, and a yes for each one only gets in the way.
+ */
+const ASK_COMMANDS: [RegExp, string][] = [
+  [
+    /\b(npm|pnpm|yarn|bun)\s+(i|install|add|ci|update|upgrade|remove|uninstall|dlx)\b|\bnpx\s+(-y|--yes)\b|\b(pip3?|pipx|poetry|uv)\s+(pip\s+)?(install|add)\b|\b(cargo|go|gem|composer|brew)\s+(add|get|install|require)\b|\bbundle\s+install\b/,
+    "installs packages",
+  ],
+  [/\b(curl|wget|ssh|scp|rsync|nc|ncat|telnet|ftp)\b|\bgit\s+(clone|fetch|pull|remote)\b/, "uses the network"],
+  [
+    /\bgit\s+(checkout|switch|reset|rebase|merge|stash|cherry-pick|revert|tag|worktree|commit\s+--amend|branch\s+-[dDmM])\b/,
+    "changes git branches or history",
+  ],
+  [/(^|[\s'"=/])\.env(?!\.(example|sample|template)\b)(\.\w+)?\b/, "touches a secrets file"],
+];
+
+/** Folders never searched for secrets files: installed packages, build output and git's own data. */
+const SKIP_DIRS = new Set(["node_modules", ".git", ".venv", "venv", "vendor", "dist"]);
+
+/**
+ * Whether the project holds a secrets file. Any command can read one through a script or an interpreter
+ * (`node -e`, `npm test`...), which no check on the command text can see, so commands run without a yes only where
+ * there is none: a worktree run, which never gets .env files copied in. Looks a few folders deep to stay quick.
+ */
+function hasSecretsFile(dir: string, depth = 4): boolean {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const e of entries) {
+    if (e.isFile() && SECRETS_FILE.test(e.name)) return true;
+    if (e.isDirectory() && depth > 0 && !SKIP_DIRS.has(e.name) && hasSecretsFile(path.join(dir, e.name), depth - 1))
+      return true;
+  }
+  return false;
+}
+
+/** Top-level folders of macOS and Linux. /dev is left out, for /dev/null and friends. */
+const SYSTEM_DIRS =
+  /^\/(Users|home|root|etc|var|tmp|private|opt|usr|bin|sbin|lib|System|Library|Applications|Volumes|mnt|media|proc|sys|srv|boot|nix|cores)(\/|$)/;
+
+/** An absolute path in a command that isn't inside the project. */
+function outsidePath(root: string, command: string): string | null {
+  // Turn the project's own paths into "." first, since they may contain spaces ("/Users/me/My Projects/app").
+  let rest = command;
+  for (const r of new Set([fs.existsSync(root) ? fs.realpathSync(root) : root, root])) rest = rest.split(r).join(".");
+  for (const [, p] of rest.matchAll(/(?:^|[\s'"=<>|;&(])(\/[^\s'";|&()<>]*)/g)) {
+    // Only real top-level folders count, so a regex such as /[a-z]+/ in a sed command isn't taken for a path.
+    if (SYSTEM_DIRS.test(p!)) return p!;
+  }
+  return null;
+}
 
 export function decide(root: string, name: string, input: unknown): Decision {
   const args = (input ?? {}) as Record<string, unknown>;
   switch (name) {
     case "read_file":
+      if (SECRETS_FILE.test(String(args.path ?? ""))) return { verdict: "ask", reason: "reads a secrets file" };
+      return { verdict: "allow", reason: "reads only" };
     case "list_files":
     case "search":
       return { verdict: "allow", reason: "reads only" };
 
     case "edit_file": {
       const rel = String(args.path ?? "");
-      if (SENSITIVE_FILES.test(rel)) return { verdict: "ask", reason: `changes ${rel}, a config or dot file` };
-      if (args.old_string === "" || !fs.existsSync(path.resolve(root, rel))) {
-        return { verdict: "ask", reason: `creates a new file, ${rel}` };
-      }
-      return { verdict: "allow", reason: "edits an existing project file" };
+      if (SECRETS_FILE.test(rel)) return { verdict: "ask", reason: `changes ${rel}, a secrets file` };
+      const creates = args.old_string === "" || !fs.existsSync(path.resolve(root, rel));
+      return { verdict: "allow", reason: creates ? `creates ${rel}` : `edits ${rel}` };
     }
 
     case "run_command": {
@@ -50,7 +110,13 @@ export function decide(root: string, name: string, input: unknown): Decision {
       for (const [pattern, why] of DENIED_COMMANDS) {
         if (pattern.test(command)) return { verdict: "deny", reason: `Denied: the command ${why}.` };
       }
-      return { verdict: "ask", reason: "runs a shell command" };
+      for (const [pattern, why] of ASK_COMMANDS) {
+        if (pattern.test(command)) return { verdict: "ask", reason: why };
+      }
+      const outside = outsidePath(root, command);
+      if (outside) return { verdict: "ask", reason: `uses ${outside}, outside the project` };
+      if (hasSecretsFile(root)) return { verdict: "ask", reason: "could read the project's .env secrets" };
+      return { verdict: "allow", reason: "runs inside the project" };
     }
 
     default:

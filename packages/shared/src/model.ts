@@ -36,6 +36,13 @@ export interface Run {
   startedAt: string;
   finishedAt?: string;
   summary?: string;
+  /**
+   * The branch Orca works on in the user's repo (orca/run-...), where the run's changes end up. Null once a run ended
+   * without changing anything, since its branch is then removed.
+   */
+  workBranch?: string | null;
+  /** The run works live in the user's own folder on `workBranch`, instead of in a worktree on its own branch. */
+  inPlace?: boolean;
 }
 
 export type AgentStatus = "queued" | "working" | "needs_human" | "issue" | "done";

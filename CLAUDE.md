@@ -17,8 +17,11 @@ pnpm monorepo, TypeScript everywhere.
 - `packages/shared`: run model, `RunEvent`s and the reducer that rebuilds a run from events. Build it before the apps
   use it (`pnpm build:shared`).
 - `packages/engine`: the agent engine (LangGraph worker loop + tools). Plain Node; run it on the test project with
-  `pnpm --filter @orca/engine fix` (`--model`, `--budget 0.25`, `--turns 30`); it asks y/n before commands and works
-  on its own `orca/run-*` branch in a git worktree. Defaults to `claude-haiku-5-5` to keep testing cheap. Needs
+  `pnpm --filter @orca/engine fix` (`--model`, `--budget 0.25`, `--turns 30`); edits and ordinary commands run on their own,
+  installs, network, git history and `.env` reads ask y/n, and every command asks when the project holds a `.env`
+  file a script could read (`src/policy.ts`; worktree runs never get `.env` copied in); it works on its own `orca/run-*` branch
+  in a git worktree, or live in the project folder on its current branch when the idea box's Worktree box is unchecked
+  (`openFolder` in `src/workspace.ts`; changes are then left uncommitted). Defaults to `claude-haiku-5-5` to keep testing cheap. Needs
   `ANTHROPIC_API_KEY` in `packages/engine/.env`.
 - Evals: `pnpm --filter @orca/engine eval` runs the tasks in `packages/engine/evals/tasks` and reports pass rate, cost
   and turns (`--repeat 3`, `--baseline evals/results/<run>` to compare, task names to run only those). Run it before

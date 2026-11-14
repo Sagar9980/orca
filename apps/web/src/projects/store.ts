@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { CreateLocalProjectInput, CreateRunInput, FolderInfo, Project, RunSummary } from "@orca/shared";
+import type { CreateLocalProjectInput, CreateRunInput, FolderInfo, Project, RunStatus, RunSummary } from "@orca/shared";
 import { api } from "../lib/api";
 import { getDevice } from "../lib/desktop";
 
@@ -87,4 +87,20 @@ export async function startRun(projectId: string, input: CreateRunInput): Promis
     projects: state.projects.map((p) => (p.id === projectId ? { ...p, runs: [run, ...p.runs] } : p)),
   });
   return run;
+}
+
+/**
+ * Saves how a run is going (running, needs you, done, failed...), so the run list shows it after a reload. The
+ * list updates right away; the server only gets the change, and a failed save is retried with the next one.
+ */
+export async function saveRunStatus(projectId: string, runId: string, status: RunStatus): Promise<void> {
+  set({
+    projects: state.projects.map((p) =>
+      p.id === projectId ? { ...p, runs: p.runs.map((r) => (r.id === runId ? { ...r, status } : r)) } : p,
+    ),
+  });
+  await api(`/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}`, {
+    method: "PATCH",
+    body: { status },
+  }).catch(() => {});
 }

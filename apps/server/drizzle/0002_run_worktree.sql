@@ -1,0 +1,1 @@
+ALTER TABLE "run" ADD COLUMN "worktree" boolean DEFAULT true NOT NULL;
