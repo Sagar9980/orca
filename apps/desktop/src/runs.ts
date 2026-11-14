@@ -1,5 +1,5 @@
 import { app } from "electron";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { ClientCommand, RunEvent } from "@orca/shared" with { "resolution-mode": "import" };
 import type { ClaudeLogin, RunHandle } from "@orca/engine" with { "resolution-mode": "import" };
@@ -81,12 +81,16 @@ function saveEvent(event: RunEvent) {
  * The events that end a run the app quit or crashed during: open questions are closed, agents stop, and the run is
  * marked failed with where its changes are. Without them the page would still offer approvals nobody can receive.
  */
-function closeOut(events: RunEvent[], runId: string, lastSeq: number): RunEvent[] {
+function closeOut(
+  events: RunEvent[],
+  runId: string,
+  lastSeq: number,
+  summary = `Orca closed while this run was going. Any changes it made are on branch orca/run-${runId}.`,
+): RunEvent[] {
   let seq = lastSeq;
   const at = new Date().toISOString();
   const base = () => ({ runId, seq: ++seq, at });
   const answered = new Set(events.flatMap((e) => (e.type === "human.responded" ? [e.requestId] : [])));
-  const summary = `Orca closed while this run was going. Any changes it made are on branch orca/run-${runId}.`;
   const out: RunEvent[] = [];
   for (const e of events) {
     if (e.type === "human.requested" && !answered.has(e.request.id))
@@ -107,23 +111,104 @@ function closeOut(events: RunEvent[], runId: string, lastSeq: number): RunEvent[
   return out;
 }
 
-/** A saved run. One that never finished (the app quit or crashed) is reported as stopped. */
+/** A line that has the shape of one of this run's events. */
+function isEvent(value: unknown, runId: string): value is RunEvent {
+  const v = value as Partial<RunEvent> | null;
+  return (
+    typeof v === "object" && v !== null && typeof v.type === "string" && v.runId === runId && typeof v.seq === "number"
+  );
+}
+
+/**
+ * A run whose saved history can't be read at all. It is shown as failed, never as unstarted, so it can't be started
+ * a second time; its work, if any, is still on its branch.
+ */
+function unreadable(runId: string, why: string): RunEvent[] {
+  const at = new Date().toISOString();
+  const summary = `${why} It won't run again; any changes it made are on branch orca/run-${runId}.`;
+  return [
+    {
+      type: "run.started",
+      runId,
+      seq: 1,
+      at,
+      run: {
+        id: runId,
+        title: "Saved run",
+        status: "failed",
+        plan: [],
+        budget: { limitUsd: 0, spentUsd: 0 },
+        startedAt: at,
+      },
+    },
+    { type: "run.finished", runId, seq: 2, at, status: "failed", summary },
+  ];
+}
+
+/**
+ * A saved run, or none when it has no log because it never started. A log damaged partway (usually the last line,
+ * half written when the app crashed) keeps every event before the damage, and a run that never finished is reported
+ * as stopped. A damaged file is kept beside the repaired one as <id>.jsonl.damaged.
+ */
 function savedEvents(runId: string): RunEvent[] {
-  let events: RunEvent[];
+  let text: string;
   try {
-    events = readFileSync(runFile(runId), "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as RunEvent);
-  } catch {
-    return [];
+    text = readFileSync(runFile(runId), "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    console.warn(`Orca: can't read the saved run ${runId}:`, err);
+    return unreadable(runId, "Orca couldn't read this run's saved history.");
   }
-  const last = events[events.length - 1];
-  if (last && last.type !== "run.finished") {
-    const ending = closeOut(events, runId, last.seq);
-    ending.forEach(saveEvent);
-    events.push(...ending);
+
+  const events: RunEvent[] = [];
+  let damagedAt = 0;
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i]) continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(lines[i]!);
+    } catch {
+      value = null;
+    }
+    if (!isEvent(value, runId)) {
+      damagedAt = i + 1;
+      break;
+    }
+    events.push(value);
   }
+  // Without its first event the page can't rebuild the run, so nothing before the damage is usable either.
+  if (events.length && events[0]!.type !== "run.started") {
+    damagedAt ||= 1;
+    events.length = 0;
+  }
+  if (damagedAt)
+    console.warn(`Orca: the saved run ${runId} is damaged at line ${damagedAt}; keeping what came before.`);
+  // An empty log still means the run started, so it is never treated as unstarted.
+  if (!events.length) return unreadable(runId, "This run's saved history is damaged.");
+
+  const last = events[events.length - 1]!;
+  const ending =
+    last.type === "run.finished"
+      ? []
+      : closeOut(
+          events,
+          runId,
+          last.seq,
+          damagedAt
+            ? `Orca closed while this run was going, and the end of its saved history was damaged. Any changes it made are on branch orca/run-${runId}.`
+            : undefined,
+        );
+  events.push(...ending);
+  if (damagedAt) {
+    // Rewrite the log from what was kept, so the damage is repaired once and the next read is clean.
+    try {
+      renameSync(runFile(runId), `${runFile(runId)}.damaged`);
+      writeFileSync(runFile(runId), events.map((e) => JSON.stringify(e) + "\n").join(""), { mode: 0o600 });
+    } catch (err) {
+      console.warn(`Orca: couldn't repair the saved run ${runId}:`, err);
+    }
+  } else ending.forEach(saveEvent);
   return events;
 }
 
