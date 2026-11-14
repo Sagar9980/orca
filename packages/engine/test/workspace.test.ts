@@ -100,11 +100,10 @@ describe("workspace", () => {
     expect(await fs.readFile(path.join(ws.root, ".env"), "utf8")).toContain("secret");
     expect(await exists(path.join(ws.root, "build"))).toBe(false);
 
-    // The run's packages are its own: changing them leaves the user's copy alone (macOS clones them).
-    if (process.platform === "darwin") {
-      await fs.writeFile(path.join(ws.root, "node_modules/left-pad/index.js"), "changed\n");
-      expect(await fs.readFile(path.join(dir, "node_modules/left-pad/index.js"), "utf8")).toContain("1");
-    }
+    // The run's packages are its own copy on every platform: changing them leaves the user's alone.
+    expect((await fs.lstat(path.join(ws.root, "node_modules"))).isSymbolicLink()).toBe(false);
+    await fs.writeFile(path.join(ws.root, "node_modules/left-pad/index.js"), "changed\n");
+    expect(await fs.readFile(path.join(dir, "node_modules/left-pad/index.js"), "utf8")).toContain("1");
     // Ignored files never end up in the run's commit.
     await fs.writeFile(path.join(ws.root, "src/slug.js"), "export const changed = true;\n");
     await closeWorkspace(ws, "Orca: test");

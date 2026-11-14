@@ -44,8 +44,9 @@ const ENV_FILE = /^\.env(\..+)?$/;
 
 /**
  * Brings the repo's installed packages and .env files into the worktree, since a fresh checkout has neither and a
- * real project can't build or run its tests without them. On macOS each is a copy-on-write clone: instant, nearly no
- * disk, and changes in the run never reach the user's own copy. Elsewhere folders are symlinked.
+ * real project can't build or run its tests without them. Each is the run's own copy, so changes in the run never reach
+ * the user's: on macOS a copy-on-write clone (instant, nearly no disk), elsewhere a plain copy that keeps the
+ * symlinks inside it as they are (pnpm's node_modules is built from relative links).
  */
 async function bringIgnoredFiles(repo: string, worktree: string): Promise<string[]> {
   const listed = await git(repo, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z");
@@ -61,7 +62,7 @@ async function bringIgnoredFiles(repo: string, worktree: string): Promise<string
     try {
       await fs.mkdir(path.dirname(to), { recursive: true });
       if (process.platform === "darwin") await exec("cp", ["-cR", from, to]);
-      else if (isDir) await fs.symlink(from, to, process.platform === "win32" ? "junction" : "dir");
+      else if (isDir) await fs.cp(from, to, { recursive: true, verbatimSymlinks: true });
       else await fs.copyFile(from, to);
       copied.push(rel);
     } catch {
