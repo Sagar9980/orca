@@ -55,8 +55,15 @@ async function bringIgnoredFiles(repo: string, worktree: string): Promise<string
     .filter(Boolean)
     .map((entry) => ({ rel: entry.replace(/\/$/, ""), isDir: entry.endsWith("/") }))
     .filter(({ rel, isDir }) => (isDir ? DEPENDENCY_DIRS.has(path.basename(rel)) : ENV_FILE.test(path.basename(rel))));
+  // The list above follows the user's checkout, but the worktree may start from a branch with other ignore rules (or
+  // the user may have uncommitted .gitignore edits). Copy only what the worktree ignores too, so nothing copied can be
+  // committed to the run's branch.
+  const ignoredHere = await worktreeIgnores(
+    worktree,
+    wanted.map(({ rel, isDir }) => (isDir ? `${rel}/` : rel)),
+  );
   const copied: string[] = [];
-  for (const { rel, isDir } of wanted) {
+  for (const { rel, isDir } of wanted.filter(({ rel, isDir }) => ignoredHere.has(isDir ? `${rel}/` : rel))) {
     const from = path.join(repo, rel);
     const to = path.join(worktree, rel);
     try {
@@ -70,6 +77,14 @@ async function bringIgnoredFiles(repo: string, worktree: string): Promise<string
     }
   }
   return copied;
+}
+
+/** Which of `paths` (folders end in "/") the worktree's own ignore rules ignore. */
+async function worktreeIgnores(worktree: string, paths: string[]): Promise<Set<string>> {
+  if (!paths.length) return new Set();
+  // Exit code 1 means none is ignored; quotePath off keeps unusual names as they are.
+  const out = await git(worktree, "-c", "core.quotePath=false", "check-ignore", "--", ...paths).catch(() => "");
+  return new Set(out.split("\n").filter(Boolean));
 }
 
 /** `from` is the branch or commit to start from; the repo's current HEAD when left out. */
@@ -130,7 +145,9 @@ export async function openFolder(project: string, from?: string): Promise<Worksp
  */
 export async function closeWorkspace(ws: Workspace, message: string): Promise<{ committed: boolean }> {
   await git(ws.worktree, "add", "-A");
-  if ((await git(ws.worktree, "status", "--porcelain")) !== "") {
+  // Never commit what was copied in (packages, .env secrets), even if the agent changed .gitignore during the run.
+  if (ws.copied.length) await git(ws.worktree, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ...ws.copied);
+  if ((await git(ws.worktree, "diff", "--cached", "--name-only")) !== "") {
     await git(ws.worktree, ...ORCA_COMMIT, "commit", "-q", "--no-verify", "-m", message);
   }
   // --force only drops ignored files such as node_modules; everything tracked is committed above.

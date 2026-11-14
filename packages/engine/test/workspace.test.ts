@@ -133,4 +133,32 @@ describe("workspace", () => {
     await expect(openFolder(dir, "some-other-branch")).rejects.toThrow(/Your folder is on .*not some-other-branch/);
     expect(git(dir, "branch", "--list", "orca/*")).toBe("");
   });
+
+  it("copies only what the run's branch ignores too, and never commits copied files", async () => {
+    const dir = await testRepo();
+    const commit = (msg: string) => git(dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", msg);
+    // The branch the run starts from ignores node_modules but not .env; the user's checkout ignores both.
+    await fs.writeFile(path.join(dir, ".gitignore"), "node_modules/\n");
+    git(dir, "add", "-A");
+    commit("ignore packages");
+    git(dir, "branch", "base-without-env-rule");
+    await fs.writeFile(path.join(dir, ".gitignore"), "node_modules/\n.env\n");
+    git(dir, "add", "-A");
+    commit("ignore .env too");
+    await fs.mkdir(path.join(dir, "node_modules/pkg"), { recursive: true });
+    await fs.writeFile(path.join(dir, "node_modules/pkg/index.js"), "x\n");
+    await fs.writeFile(path.join(dir, ".env"), "TOKEN=secret\n");
+
+    const ws = await openWorkspace(dir, runId(), "base-without-env-rule");
+    expect(ws.copied).toEqual(["node_modules"]);
+    expect(await exists(path.join(ws.root, ".env"))).toBe(false);
+
+    // Even if the agent stops ignoring the packages, what was copied in stays out of the commit.
+    await fs.writeFile(path.join(ws.root, ".gitignore"), "");
+    await fs.writeFile(path.join(ws.root, "src/slug.js"), "export const changed = true;\n");
+    expect(await closeWorkspace(ws, "Orca: test")).toEqual({ committed: true });
+    const files = git(dir, "ls-tree", "-r", "--name-only", ws.branch);
+    expect(files).not.toContain("node_modules");
+    expect(files).toContain("src/slug.js");
+  });
 });
