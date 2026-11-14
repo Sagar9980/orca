@@ -28,7 +28,7 @@ export interface Workspace {
   root: string;
   /** The repo had uncommitted changes. They stay where they are and aren't part of the run. */
   dirty: boolean;
-  /** Ignored files brought over from the repo so the project builds and runs: installed packages and .env files. */
+  /** Ignored folders brought over from the repo so the project builds and runs: installed packages and `dist`. */
   copied: string[];
   /** Working live in the user's own folder on its current branch: no worktree, no new branch, nothing committed. */
   inPlace: boolean;
@@ -39,12 +39,10 @@ export interface Workspace {
  * that packages in a monorepo import from each other. Only ones git ignores are copied.
  */
 const DEPENDENCY_DIRS = new Set(["node_modules", ".venv", "venv", "vendor", "dist"]);
-/** Local settings files such as .env and .env.local. Reading them needs a yes (see policy.ts). */
-const ENV_FILE = /^\.env(\..+)?$/;
-
 /**
- * Brings the repo's installed packages and .env files into the worktree, since a fresh checkout has neither and a
- * real project can't build or run its tests without them. Each is the run's own copy, so changes in the run never reach
+ * Brings the repo's installed packages into the worktree, since a fresh checkout has none and a real project can't
+ * build or run its tests without them. .env files are left out on purpose: any command or script in the run could read
+ * them and show the secrets to the model, so a worktree run never has them (see policy.ts). Each is the run's own copy, so changes in the run never reach
  * the user's: on macOS a copy-on-write clone (instant, nearly no disk), elsewhere a plain copy that keeps the
  * symlinks inside it as they are (pnpm's node_modules is built from relative links).
  */
@@ -54,7 +52,7 @@ async function bringIgnoredFiles(repo: string, worktree: string): Promise<string
     .split("\0")
     .filter(Boolean)
     .map((entry) => ({ rel: entry.replace(/\/$/, ""), isDir: entry.endsWith("/") }))
-    .filter(({ rel, isDir }) => (isDir ? DEPENDENCY_DIRS.has(path.basename(rel)) : ENV_FILE.test(path.basename(rel))));
+    .filter(({ rel, isDir }) => isDir && DEPENDENCY_DIRS.has(path.basename(rel)));
   // The list above follows the user's checkout, but the worktree may start from a branch with other ignore rules (or
   // the user may have uncommitted .gitignore edits). Copy only what the worktree ignores too, so nothing copied can be
   // committed to the run's branch.
@@ -145,7 +143,7 @@ export async function openFolder(project: string, from?: string): Promise<Worksp
  */
 export async function closeWorkspace(ws: Workspace, message: string): Promise<{ committed: boolean }> {
   await git(ws.worktree, "add", "-A");
-  // Never commit what was copied in (packages, .env secrets), even if the agent changed .gitignore during the run.
+  // Never commit what was copied in, even if the agent changed .gitignore during the run.
   if (ws.copied.length) await git(ws.worktree, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ...ws.copied);
   if ((await git(ws.worktree, "diff", "--cached", "--name-only")) !== "") {
     await git(ws.worktree, ...ORCA_COMMIT, "commit", "-q", "--no-verify", "-m", message);

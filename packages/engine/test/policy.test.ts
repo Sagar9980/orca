@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "../src/policy.js";
 import { FIXTURE } from "./helpers.js";
@@ -84,5 +87,25 @@ describe("policy", () => {
     expect(verdict("read_file", { path: ".env" })).toBe("ask");
     expect(verdict("read_file", { path: "apps/web/.env.local" })).toBe("ask");
     expect(verdict("read_file", { path: ".env.example" })).toBe("allow");
+  });
+
+  it("asks before any command when the project holds a secrets file a script could read", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "orca-secrets-"));
+    try {
+      const run = (command: string) => decide(dir, "run_command", { command });
+      await fs.writeFile(path.join(dir, ".env.example"), "TOKEN=\n");
+      await fs.mkdir(path.join(dir, "node_modules/pkg"), { recursive: true });
+      await fs.writeFile(path.join(dir, "node_modules/pkg/.env"), "x\n");
+      expect(run("npm test").verdict).toBe("allow");
+
+      await fs.mkdir(path.join(dir, "apps/web"), { recursive: true });
+      await fs.writeFile(path.join(dir, "apps/web/.env.local"), "TOKEN=secret\n");
+      expect(run("npm test")).toEqual({ verdict: "ask", reason: "could read the project's .env secrets" });
+      expect(run(`node -e "console.log(require('fs').readFileSync('apps/web/.env.local', 'utf8'))"`).verdict).toBe(
+        "ask",
+      );
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

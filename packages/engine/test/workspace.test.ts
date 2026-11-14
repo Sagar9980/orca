@@ -79,7 +79,7 @@ describe("workspace", () => {
     await expect(openWorkspace(repo, runId(), "no-such-branch")).rejects.toThrow(/doesn't exist/);
   });
 
-  it("brings installed packages and .env files into the run, but not other ignored files", async () => {
+  it("brings installed packages into the run, but not .env secrets or other ignored files", async () => {
     const dir = await testRepo();
     await fs.writeFile(path.join(dir, ".gitignore"), "node_modules/\n.env*\n!.env.example\nbuild/\n");
     await fs.writeFile(path.join(dir, ".env.example"), "TOKEN=\n");
@@ -95,9 +95,11 @@ describe("workspace", () => {
     await fs.writeFile(path.join(dir, "build/out.js"), "built\n");
 
     const ws = await openWorkspace(dir, runId());
-    expect([...ws.copied].sort()).toEqual([".env", ".env.local", "node_modules", "src/nested/node_modules"]);
+    expect([...ws.copied].sort()).toEqual(["node_modules", "src/nested/node_modules"]);
     expect(await fs.readFile(path.join(ws.root, "node_modules/left-pad/index.js"), "utf8")).toContain("1");
-    expect(await fs.readFile(path.join(ws.root, ".env"), "utf8")).toContain("secret");
+    // Any command in the run could read a .env file, so secrets never come along.
+    expect(await exists(path.join(ws.root, ".env"))).toBe(false);
+    expect(await exists(path.join(ws.root, ".env.local"))).toBe(false);
     expect(await exists(path.join(ws.root, "build"))).toBe(false);
 
     // The run's packages are its own copy on every platform: changing them leaves the user's alone.

@@ -32,9 +32,9 @@ const DENIED_COMMANDS: [RegExp, string][] = [
 export const SECRETS_FILE = /(^|\/)\.env(\.(?!example$|sample$|template$)[^/]+)?$/;
 
 /**
- * Commands that reach beyond the run's own copy of the project. Everything else runs without asking: the agent works
- * in a throwaway worktree on its own branch, so ordinary commands (tests, builds, scripts, editing with sed) can't harm
- * the user's project, and a yes for each one only gets in the way.
+ * Commands that reach beyond the run's own copy of the project. Everything else runs without asking when the project
+ * holds no secrets files: the agent works in a throwaway worktree on its own branch, so ordinary commands (tests,
+ * builds, scripts, editing with sed) can't harm the user's project, and a yes for each one only gets in the way.
  */
 const ASK_COMMANDS: [RegExp, string][] = [
   [
@@ -48,6 +48,29 @@ const ASK_COMMANDS: [RegExp, string][] = [
   ],
   [/(^|[\s'"=/])\.env(?!\.(example|sample|template)\b)(\.\w+)?\b/, "touches a secrets file"],
 ];
+
+/** Folders never searched for secrets files: installed packages, build output and git's own data. */
+const SKIP_DIRS = new Set(["node_modules", ".git", ".venv", "venv", "vendor", "dist"]);
+
+/**
+ * Whether the project holds a secrets file. Any command can read one through a script or an interpreter
+ * (`node -e`, `npm test`...), which no check on the command text can see, so commands run without a yes only where
+ * there is none: a worktree run, which never gets .env files copied in. Looks a few folders deep to stay quick.
+ */
+function hasSecretsFile(dir: string, depth = 4): boolean {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const e of entries) {
+    if (e.isFile() && SECRETS_FILE.test(e.name)) return true;
+    if (e.isDirectory() && depth > 0 && !SKIP_DIRS.has(e.name) && hasSecretsFile(path.join(dir, e.name), depth - 1))
+      return true;
+  }
+  return false;
+}
 
 /** Top-level folders of macOS and Linux. /dev is left out, for /dev/null and friends. */
 const SYSTEM_DIRS =
@@ -92,6 +115,7 @@ export function decide(root: string, name: string, input: unknown): Decision {
       }
       const outside = outsidePath(root, command);
       if (outside) return { verdict: "ask", reason: `uses ${outside}, outside the project` };
+      if (hasSecretsFile(root)) return { verdict: "ask", reason: "could read the project's .env secrets" };
       return { verdict: "allow", reason: "runs inside the project" };
     }
 

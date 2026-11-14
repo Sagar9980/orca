@@ -251,7 +251,7 @@ export function startRun(options: StartRunOptions): RunHandle {
         "You have uncommitted changes. The agent started from your last commit, so it can't see them.",
       );
     }
-    // A fresh checkout has no installed packages or .env files; say which were brought over, so the agent doesn't
+    // A fresh checkout has no installed packages; say which were brought over, so the agent doesn't
     // reinstall them or go looking.
     const task = ws.copied.length
       ? `${title}\n\nAlready in place from the project (not in git): ${ws.copied.join(", ")}.`
