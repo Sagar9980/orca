@@ -12,9 +12,49 @@ const exec = promisify(execFile);
 /** Commits by the engine: no hooks from the user's repo, no signing prompts, and a clear author. */
 const ORCA_COMMIT = ["-c", "user.name=Orca", "-c", "user.email=orca@localhost", "-c", "commit.gpgsign=false"];
 
-async function git(cwd: string, ...args: string[]): Promise<string> {
-  const { stdout } = await exec("git", args, { cwd });
-  return stdout.trim();
+/** Runs git and returns its output. A failure throws git's own message, which is what the user needs to see. */
+export async function git(cwd: string, ...args: string[]): Promise<string> {
+  return run(cwd, args, {});
+}
+
+/** Git that talks to a remote: never stops to ask for a password, and gives up instead of hanging. */
+export async function gitRemote(cwd: string, ...args: string[]): Promise<string> {
+  return run(cwd, args, { timeout: 60_000, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } });
+}
+
+async function run(cwd: string, args: string[], options: { timeout?: number; env?: NodeJS.ProcessEnv }) {
+  try {
+    const { stdout } = await exec("git", args, { cwd, maxBuffer: 64 * 1024 * 1024, ...options });
+    return stdout.trim();
+  } catch (err) {
+    const e = err as { stderr?: string; killed?: boolean; message: string };
+    if (e.killed) throw new Error(`git ${args[0]} took too long and was stopped.`);
+    throw new Error(e.stderr?.trim().replace(/^(fatal|error): /gm, "") || e.message);
+  }
+}
+
+/**
+ * Brings the remote's new commits for `branch`, so a run starts from the latest work. Returns the commit to start
+ * from and a line for the user when something worth knowing happened. The user's own branch isn't moved here.
+ */
+async function latest(repo: string, branch: string, local: string): Promise<{ start: string; note: string }> {
+  const upstream = await git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", `${branch}@{upstream}`).catch(
+    () => "",
+  );
+  const remote = await git(repo, "config", `branch.${branch}.remote`).catch(() => "");
+  if (!upstream || !remote || remote === ".") return { start: local, note: "" };
+  try {
+    await gitRemote(repo, "fetch", "-q", "--no-tags", remote);
+  } catch {
+    return { start: local, note: `Couldn't reach ${remote}, so this started from your local ${branch}.` };
+  }
+  const tip = await git(repo, "rev-parse", `${upstream}^{commit}`);
+  const behind = Number(await git(repo, "rev-list", "--count", `${local}..${tip}`));
+  const ahead = Number(await git(repo, "rev-list", "--count", `${tip}..${local}`));
+  if (!behind) return { start: local, note: "" };
+  if (ahead)
+    return { start: local, note: `${branch} and ${upstream} have both moved; started from your local ${branch}.` };
+  return { start: tip, note: `Pulled ${behind} new ${behind === 1 ? "commit" : "commits"} from ${upstream}.` };
 }
 
 export interface Workspace {
@@ -32,6 +72,8 @@ export interface Workspace {
   copied: string[];
   /** Working live in the user's own folder on its current branch: no worktree, no new branch, nothing committed. */
   inPlace: boolean;
+  /** What happened when bringing the remote's new commits, for the user. Empty when there was nothing to say. */
+  synced: string;
 }
 
 /**
@@ -94,11 +136,15 @@ export async function openWorkspace(project: string, runId: string, from?: strin
   const repo = await git(realProject, "rev-parse", "--show-toplevel").catch(() => {
     throw new Error(`${project} is not in a git repository. Orca works on a branch, so run \`git init\` first.`);
   });
-  const base = await git(repo, "rev-parse", "--verify", "--end-of-options", `${from ?? "HEAD"}^{commit}`).catch(() => {
+  const local = await git(repo, "rev-parse", "--verify", "--end-of-options", `${from ?? "HEAD"}^{commit}`).catch(() => {
     throw new Error(
       from ? `Branch ${from} doesn't exist in ${repo}.` : `${repo} has no commits yet. Commit once so Orca can branch.`,
     );
   });
+  // Start from the remote's latest when the branch tracks one and is only behind it.
+  const name = from ?? (await git(repo, "symbolic-ref", "--short", "-q", "HEAD").catch(() => ""));
+  const isBranch = name && (await git(repo, "rev-parse", "--verify", "--quiet", `refs/heads/${name}`).catch(() => ""));
+  const { start: base, note: synced } = isBranch ? await latest(repo, name, local) : { start: local, note: "" };
 
   const dirty = (await git(repo, "status", "--porcelain")) !== "";
   const branch = `orca/run-${runId}`;
@@ -112,7 +158,7 @@ export async function openWorkspace(project: string, runId: string, from?: strin
   await git(repo, "worktree", "add", "-q", "-b", branch, worktree, base);
   const copied = await bringIgnoredFiles(repo, worktree);
   const root = path.join(worktree, path.relative(repo, realProject));
-  return { repo, branch, base, worktree, root, dirty, copied, inPlace: false };
+  return { repo, branch, base, worktree, root, dirty, copied, inPlace: false, synced };
 }
 
 /**
@@ -131,9 +177,22 @@ export async function openFolder(project: string, from?: string): Promise<Worksp
       `Your folder is on ${branch || "a detached commit"}, not ${from}. Switch to ${from} first, or run in a worktree.`,
     );
   }
-  const base = await git(repo, "rev-parse", "HEAD").catch(() => "");
   const dirty = (await git(repo, "status", "--porcelain")) !== "";
-  return { repo, branch, base, worktree: repo, root: realProject, dirty, copied: [], inPlace: true };
+  let synced = "";
+  const head = await git(repo, "rev-parse", "HEAD").catch(() => "");
+  if (branch && head) {
+    // Pull only when it can't touch the user's work: a fast-forward of a clean folder.
+    const { start, note } = await latest(repo, branch, head);
+    if (start === head) synced = note;
+    else if (dirty)
+      synced = `There are new commits on ${branch}'s remote; not pulled, since you have uncommitted changes.`;
+    else {
+      await git(repo, "merge", "-q", "--ff-only", start);
+      synced = note;
+    }
+  }
+  const base = await git(repo, "rev-parse", "HEAD").catch(() => "");
+  return { repo, branch, base, worktree: repo, root: realProject, dirty, copied: [], inPlace: true, synced };
 }
 
 /**
