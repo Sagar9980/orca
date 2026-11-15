@@ -192,6 +192,8 @@ export interface ClaudeCodeWorkerOptions {
   root: string;
   task: string;
   maxTurns: number;
+  /** true on a run's own branch: commit each step. false in the user's folder: leave changes uncommitted. */
+  commits: boolean;
   /** Shows an approval card; resolves true when the human approves. */
   ask(call: { id: string; name: string; input: unknown; reason: string }): Promise<boolean>;
   /** Resolves once the run is not paused. Called before every tool call. */
@@ -210,13 +212,21 @@ export interface ClaudeCodeResult {
   estimatedUsd: number;
 }
 
-const ORCA_INSTRUCTIONS = `You are working for Orca on a branch made for this task, in the current folder.
-Make the change, check it (run the tests if the project has them), and finish with a short summary of what you changed.
+/** How Orca wants the work done and reported. Shared with Orca's own worker loop. */
+export function orcaInstructions(commits: boolean): string {
+  return `You are working for Orca in the current folder.
+Make the change and check it (run the tests if the project has them).
+${
+  commits
+    ? 'You are on a branch made for this task. Commit each working step with `git add -A && git commit -m "<short message>"`, in the imperative, like a teammate would. Don\'t switch branches, rebase or push.'
+    : "This is the user's own folder and branch. Don't commit, switch branches or push: the user reviews your changes."
+}
 Some tool calls need a human's approval; if one is denied, adjust instead of retrying the same call.
-Don't commit or switch branches: Orca commits your changes to this branch when you finish.`;
+End with one or two plain sentences on what you did, the way you'd tell a teammate. No headings, lists or recap.`;
+}
 
 export async function runClaudeCode(options: ClaudeCodeWorkerOptions): Promise<ClaudeCodeResult> {
-  const { root, task, maxTurns, ask, waitWhilePaused, signal, onEvent } = options;
+  const { root, task, maxTurns, commits, ask, waitWhilePaused, signal, onEvent } = options;
   const abort = new AbortController();
   signal.addEventListener("abort", () => abort.abort(), { once: true });
   /** The gate's decision per tool call, so canUseTool asks with the same reason. */
@@ -267,7 +277,7 @@ export async function runClaudeCode(options: ClaudeCodeWorkerOptions): Promise<C
       cwd: root,
       maxTurns,
       permissionMode: "default",
-      systemPrompt: { type: "preset", preset: "claude_code", append: ORCA_INSTRUCTIONS },
+      systemPrompt: { type: "preset", preset: "claude_code", append: orcaInstructions(commits) },
       canUseTool,
       hooks: { PreToolUse: [{ hooks: [gate] }] },
     },

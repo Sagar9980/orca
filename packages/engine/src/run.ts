@@ -243,6 +243,7 @@ export function startRun(options: StartRunOptions): RunHandle {
         tokens: 0,
       },
     });
+    if (ws.synced) message(ORCHESTRATOR, HUMAN, "reply", ws.synced);
     if (ws.dirty && !ws.inPlace) {
       message(
         ORCHESTRATOR,
@@ -266,6 +267,7 @@ export function startRun(options: StartRunOptions): RunHandle {
           root: ws.root,
           task,
           maxTurns,
+          commits: !ws.inPlace,
           ask: async (call) => (await askHuman({ calls: [call] }))[call.id] === true,
           waitWhilePaused,
           signal: stopSignal.signal,
@@ -273,15 +275,17 @@ export function startRun(options: StartRunOptions): RunHandle {
           onEvent: (event) => onClaudeCodeEvent(fs.realpathSync(ws.root), event),
         });
         ok = !stopped && result.ok;
-        summary = [
-          stopped ? "Stopped." : "",
-          ok ? result.text : `Stopped: ${result.text}`,
-          `${result.turns} turns on Claude Code with your Claude login.`,
-        ]
-          .filter(Boolean)
-          .join(" ");
+        summary = stopped ? "Stopped." : ok ? result.text : `Stopped: ${result.text}`;
       } else {
-        const worker = buildWorker({ root: ws.root, model, maxTurns, maxUsd, apiKey, ...(client ? { client } : {}) });
+        const worker = buildWorker({
+          root: ws.root,
+          commits: !ws.inPlace,
+          model,
+          maxTurns,
+          maxUsd,
+          apiKey,
+          ...(client ? { client } : {}),
+        });
         const thread = { configurable: { thread_id: runId } };
         let input: Parameters<typeof worker.stream>[0] = { messages: [{ role: "user", content: task }] };
         while (!stopped) {
@@ -301,7 +305,7 @@ export function startRun(options: StartRunOptions): RunHandle {
             input = null;
           } else break;
         }
-        const { stopReason, limit, turns, spentUsd } = (await worker.getState(thread)).values;
+        const { stopReason, limit } = (await worker.getState(thread)).values;
         ok = !stopped && !limit && stopReason === "end_turn";
         const why = stopped
           ? "Stopped."
@@ -310,23 +314,22 @@ export function startRun(options: StartRunOptions): RunHandle {
             : ok
               ? ""
               : `Stopped: ${stopReason}.`;
-        summary = [why, ok ? lastText : "", `${turns} turns, $${spentUsd.toFixed(4)} on ${model}.`]
-          .filter(Boolean)
-          .join(" ");
+        summary = ok ? lastText : why;
       }
     } catch (err) {
       summary = errorText(err);
       message(WORKER, ORCHESTRATOR, "issue", summary);
     } finally {
       // Even a failed or stopped run keeps its changes on the branch.
-      const firstLine = `Orca: ${title.split("\n")[0]}`.slice(0, 72);
+      // Anything the agent didn't commit itself goes in one last commit named after the task.
+      const firstLine = title.split("\n")[0]!.slice(0, 72);
       const kept = ws.inPlace
-        ? `Changes are in your folder on ${ws.branch || "the current commit"}, not committed, for you to review.`
-        : await closeWorkspace(ws, `${firstLine}\n\n${summary}`).then(
+        ? "Changes are uncommitted in your folder."
+        : await closeWorkspace(ws, firstLine).then(
             ({ committed }) => {
-              if (committed) return `Changes are on branch ${ws.branch}.`;
+              if (committed) return "";
               emit("run.updated", { patch: { workBranch: null } });
-              return "No changes were made.";
+              return "No changes.";
             },
             (err) => `Couldn't save the branch: ${errorText(err)}`,
           );
