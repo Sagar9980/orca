@@ -43,6 +43,19 @@ export interface Run {
   workBranch?: string | null;
   /** The run works live in the user's own folder on `workBranch`, instead of in a worktree on its own branch. */
   inPlace?: boolean;
+  /** What the user did with the finished run's branch, e.g. "Merged into main.", and the pull request page. */
+  landed?: { action: LandAction; note: string; url?: string };
+}
+
+/** What the user can do with a finished run's branch. */
+export type LandAction = "merge" | "push" | "discard";
+
+/** A finished run's branch, for review. */
+export interface BranchChanges {
+  commits: { sha: string; subject: string }[];
+  files: { path: string; added: number; removed: number }[];
+  /** The whole diff, cut off past about 400 KB. */
+  patch: string;
 }
 
 export type AgentStatus = "queued" | "working" | "needs_human" | "issue" | "done";
