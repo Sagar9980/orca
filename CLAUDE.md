@@ -21,7 +21,9 @@ pnpm monorepo, TypeScript everywhere.
   installs, network, git history and `.env` reads ask y/n, and every command asks when the project holds a `.env`
   file a script could read (`src/policy.ts`; worktree runs never get `.env` copied in); it works on its own `orca/run-*` branch
   in a git worktree, or live in the project folder on its current branch when the idea box's Worktree box is unchecked
-  (`openFolder` in `src/workspace.ts`; changes are then left uncommitted). Defaults to `claude-haiku-5-5` to keep testing cheap. Needs
+  (`openFolder` in `src/workspace.ts`; changes are then left uncommitted). A run first fetches the branch's remote and starts from its
+  new commits; on its own branch the agent commits each step, and a finished run's branch is merged, pushed for a PR
+  or discarded from the run page (`src/review.ts`, `ReviewPanel` in the web app). Defaults to `claude-haiku-5-5` to keep testing cheap. Needs
   `ANTHROPIC_API_KEY` in `packages/engine/.env`.
 - Evals: `pnpm --filter @orca/engine eval` runs the tasks in `packages/engine/evals/tasks` and reports pass rate, cost
   and turns (`--repeat 3`, `--baseline evals/results/<run>` to compare, task names to run only those). Run it before

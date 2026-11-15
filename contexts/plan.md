@@ -96,6 +96,8 @@ app alongside the CLI, which stays as a quick way to debug the engine on its own
 - [ ] Context management: big tool results, long runs, summarizing, prompt caching.
 - [x] Recovery: tool errors go back to the model, API errors retry, and the loop notices when it is stuck.
 - [x] Work in a git worktree / branch, never on uncommitted user work.
+- [x] Git like a teammate: pull the remote's new commits before a run, commit each step, then merge, push for a PR
+      or discard the branch from the run page.
 - [x] A small eval set: 5–10 test tasks that report pass rate, cost and turns, so changes are measured. Needed before
       we change models or prompts. (`pnpm --filter @orca/engine eval`, 7 tasks; no baseline recorded yet)
 
