@@ -1,7 +1,12 @@
-import { app } from "electron";
+import { app, shell } from "electron";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { ClientCommand, RunEvent } from "@orca/shared" with { "resolution-mode": "import" };
+import type {
+  BranchChanges,
+  ClientCommand,
+  LandAction,
+  RunEvent,
+} from "@orca/shared" with { "resolution-mode": "import" };
 import type { ClaudeLogin, RunHandle } from "@orca/engine" with { "resolution-mode": "import" };
 import { apiKey } from "./apiKey";
 import { isDirectory } from "./folders";
@@ -11,6 +16,10 @@ import { isDirectory } from "./folders";
 
 /** Runs started in this app session, by run id. Kept after they finish so a reopened page can replay them. */
 const runs = new Map<string, RunHandle>();
+/** Runs from `runs` that have finished. */
+const finished = new Set<string>();
+/** Events added to a finished run in this app session, such as merging its branch. */
+const after = new Map<string, RunEvent[]>();
 
 /** Set ORCA_FAKE_MODEL=1 to try runs with scripted model replies, for free. */
 const FAKE_MODEL = process.env.ORCA_FAKE_MODEL === "1";
@@ -214,7 +223,8 @@ function savedEvents(runId: string): RunEvent[] {
 
 export function attachRun(runId: unknown): RunEvent[] {
   if (typeof runId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(runId)) return [];
-  return runs.get(runId)?.events() ?? savedEvents(runId);
+  const live = runs.get(runId);
+  return live ? [...live.events(), ...(after.get(runId) ?? [])] : savedEvents(runId);
 }
 
 /** Starts a run unless it is already going; returns its events so far either way. */
@@ -254,7 +264,69 @@ export async function startRun(input: unknown, broadcast: (event: RunEvent) => v
     },
   });
   runs.set(runId, handle);
+  void handle.done.then(() => finished.add(runId));
   return handle.events();
+}
+
+interface ReviewInput {
+  runId: string;
+  folder: string;
+  /** The branch the run started from, which a merge or pull request goes into. */
+  base: string;
+}
+
+function parseReview(input: unknown): ReviewInput & { branch: string } {
+  const i = (input ?? {}) as Record<string, unknown>;
+  const ok =
+    typeof i.runId === "string" &&
+    /^[A-Za-z0-9_-]{1,64}$/.test(i.runId) &&
+    typeof i.folder === "string" &&
+    path.isAbsolute(i.folder) &&
+    typeof i.base === "string" &&
+    i.base.length > 0 &&
+    i.base.length <= 250;
+  if (!ok) throw new Error("Invalid run.");
+  const { runId, folder, base } = i as unknown as ReviewInput;
+  return { runId, folder, base, branch: `orca/run-${runId}` };
+}
+
+/** The finished run's commits and diff. */
+export async function runChanges(input: unknown): Promise<BranchChanges> {
+  const { folder, branch, base } = parseReview(input);
+  return (await engine()).branchChanges(folder, branch, base);
+}
+
+/**
+ * Merges, pushes or discards a finished run's branch, and records it as one more event of the run, so it shows the
+ * same after a restart. Pushing opens the pull request page in the browser.
+ */
+export async function landRun(input: unknown, action: unknown, broadcast: (event: RunEvent) => void) {
+  const { runId, folder, branch, base } = parseReview(input);
+  if (action !== "merge" && action !== "push" && action !== "discard") throw new Error("Unknown action.");
+  if (runs.has(runId) && !finished.has(runId)) throw new Error("The run is still going.");
+  const events = attachRun(runId);
+  const last = events[events.length - 1];
+  if (!last || !events.some((e) => e.type === "run.finished")) throw new Error("The run hasn't finished.");
+
+  const e = await engine();
+  let landed: { action: LandAction; note: string; url?: string };
+  if (action === "merge") landed = { action, note: await e.mergeBranch(folder, branch, base) };
+  else if (action === "discard") landed = { action, note: await e.discardBranch(folder, branch) };
+  else {
+    const { note, url } = await e.pushBranch(folder, branch, base);
+    landed = { action, note, ...(url ? { url } : {}) };
+    if (url?.startsWith("https://")) void shell.openExternal(url);
+  }
+  const event: RunEvent = {
+    type: "run.updated",
+    runId,
+    seq: last.seq + 1,
+    at: new Date().toISOString(),
+    patch: { landed, ...(action === "push" ? {} : { workBranch: null }) },
+  };
+  if (runs.has(runId)) after.set(runId, [...(after.get(runId) ?? []), event]);
+  saveEvent(event);
+  broadcast(event);
 }
 
 export function commandRun(command: unknown) {
