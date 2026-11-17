@@ -8,7 +8,8 @@
     "dev:fake": "cross-env ORCA_FAKE_MODEL=1 pnpm dev",
     "build": "tsc -p tsconfig.json",
     "start": "electron .",
-    "typecheck": "pnpm --filter @orca/engine build && tsc -p tsconfig.json --noEmit"
+    "typecheck": "pnpm --filter @orca/engine build && tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@orca/engine": "workspace:*",
@@ -18,6 +19,7 @@
     "@types/node": "^22.0.0",
     "cross-env": "^7.0.3",
     "electron": "^45.2.3",
+    "vitest": "^5.1.0",
     "wait-on": "^8.0.0"
   }
 }
