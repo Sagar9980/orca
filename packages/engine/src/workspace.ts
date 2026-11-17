@@ -224,11 +224,40 @@ export async function closeWorkspace(ws: Workspace, message: string): Promise<{ 
   if ((await git(ws.worktree, "diff", "--cached", "--name-only")) !== "") {
     await git(ws.worktree, ...ORCA_COMMIT, "commit", "-q", "--no-verify", "-m", message);
   }
+  await dropCopiedFromHistory(ws);
   // --force only drops ignored files such as node_modules; everything tracked is committed above.
   await git(ws.repo, "worktree", "remove", "--force", ws.worktree);
   const ahead = Number(await git(ws.repo, "rev-list", "--count", `${ws.base}..${ws.branch}`));
   if (!ahead) await git(ws.repo, "branch", "-D", ws.branch);
   return { committed: ahead > 0 };
+}
+
+/**
+ * The agent commits as it goes, and nothing on the command line can stop a script from un-ignoring or force-adding
+ * what was copied in (node_modules...). So before the branch is handed over, any commit of the run that holds a
+ * copied path is rewritten without it, keeping its message and author; one left empty by that is dropped.
+ */
+async function dropCopiedFromHistory(ws: Workspace) {
+  if (!ws.copied.length) return;
+  if (!(await git(ws.worktree, "log", "--format=%H", `${ws.base}..${ws.branch}`, "--", ...ws.copied))) return;
+  const quoted = ws.copied.map((p) => `'${p.replace(/'/g, `'\\''`)}'`).join(" ");
+  await run(
+    ws.worktree,
+    [
+      "-c",
+      "commit.gpgsign=false",
+      "filter-branch",
+      "-f",
+      "--prune-empty",
+      "--index-filter",
+      `git rm -r -q --cached --ignore-unmatch -- ${quoted}`,
+      "--",
+      `${ws.base}..${ws.branch}`,
+    ],
+    { env: { ...process.env, FILTER_BRANCH_SQUELCH_WARNING: "1" } },
+  );
+  // filter-branch keeps a backup of the old branch; the user's repo shouldn't get it.
+  await git(ws.worktree, "update-ref", "-d", `refs/original/refs/heads/${ws.branch}`);
 }
 
 /** Copies a test project to a temporary folder and makes it a git repo with one commit, so it runs like a real one. */

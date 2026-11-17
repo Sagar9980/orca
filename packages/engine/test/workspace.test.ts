@@ -163,4 +163,37 @@ describe("workspace", () => {
     expect(files).not.toContain("node_modules");
     expect(files).toContain("src/slug.js");
   });
+
+  it("takes copied files out of every commit the agent made itself", async () => {
+    const dir = await testRepo();
+    const commit = (cwd: string, ...args: string[]) =>
+      git(cwd, "-c", "user.name=agent", "-c", "user.email=a@a", "commit", "-q", ...args);
+    await fs.writeFile(path.join(dir, ".gitignore"), "node_modules/\n");
+    git(dir, "add", "-A");
+    commit(dir, "-m", "ignore packages");
+    await fs.mkdir(path.join(dir, "node_modules/pkg"), { recursive: true });
+    await fs.writeFile(path.join(dir, "node_modules/pkg/index.js"), "x\n");
+
+    const ws = await openWorkspace(dir, runId());
+    // The agent un-ignores the packages, commits them along with a step, and force-adds them again later.
+    await fs.writeFile(path.join(ws.root, ".gitignore"), "");
+    await fs.writeFile(path.join(ws.root, "src/slug.js"), "export const one = 1;\n");
+    git(ws.root, "add", "-A");
+    commit(ws.root, "-m", "Step one");
+    await fs.writeFile(path.join(ws.root, ".gitignore"), "node_modules/\n");
+    await fs.writeFile(path.join(ws.root, "node_modules/pkg/index.js"), "y\n");
+    await fs.writeFile(path.join(ws.root, "src/cart.js"), "export const two = 2;\n");
+    git(ws.root, "add", "-A");
+    git(ws.root, "add", "-f", "node_modules");
+    commit(ws.root, "-m", "Step two");
+
+    expect(await closeWorkspace(ws, "task")).toEqual({ committed: true });
+    expect(git(dir, "log", "--format=%s", `${ws.base}..${ws.branch}`)).toBe("Step two\nStep one");
+    expect(git(dir, "log", "--format=%H", `${ws.base}..${ws.branch}`, "--", "node_modules")).toBe("");
+    expect(git(dir, "show", `${ws.branch}:src/slug.js`)).toContain("one");
+    expect(git(dir, "show", `${ws.branch}:src/cart.js`)).toContain("two");
+    expect(git(dir, "log", "-1", "--format=%an", ws.branch)).toBe("agent");
+    // No backup refs left behind in the user's repo.
+    expect(git(dir, "for-each-ref", "refs/original")).toBe("");
+  });
 });
