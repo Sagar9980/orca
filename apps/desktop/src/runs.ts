@@ -128,6 +128,26 @@ function isEvent(value: unknown, runId: string): value is RunEvent {
   );
 }
 
+/** A merge, push or discard of a finished run's branch, recorded after its run.finished (see landRun). */
+function isLanding(e: RunEvent): boolean {
+  const landed = e.type === "run.updated" ? e.patch.landed : undefined;
+  return (
+    typeof landed === "object" &&
+    landed !== null &&
+    (landed.action === "merge" || landed.action === "push" || landed.action === "discard") &&
+    typeof landed.note === "string"
+  );
+}
+
+/** Whether a saved run ended: it closes with run.finished, followed only by landings of its branch. */
+function ended(events: RunEvent[]): boolean {
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i]!.type === "run.finished") return true;
+    if (!isLanding(events[i]!)) return false;
+  }
+  return false;
+}
+
 /**
  * A run whose saved history can't be read at all. It is shown as failed, never as unstarted, so it can't be started
  * a second time; its work, if any, is still on its branch.
@@ -197,17 +217,16 @@ function savedEvents(runId: string): RunEvent[] {
   if (!events.length) return unreadable(runId, "This run's saved history is damaged.");
 
   const last = events[events.length - 1]!;
-  const ending =
-    last.type === "run.finished"
-      ? []
-      : closeOut(
-          events,
-          runId,
-          last.seq,
-          damagedAt
-            ? `Orca closed while this run was going, and the end of its saved history was damaged. Any changes it made are on branch orca/run-${runId}.`
-            : undefined,
-        );
+  const ending = ended(events)
+    ? []
+    : closeOut(
+        events,
+        runId,
+        last.seq,
+        damagedAt
+          ? `Orca closed while this run was going, and the end of its saved history was damaged. Any changes it made are on branch orca/run-${runId}.`
+          : undefined,
+      );
   events.push(...ending);
   if (damagedAt) {
     // Rewrite the log from what was kept, so the damage is repaired once and the next read is clean.
