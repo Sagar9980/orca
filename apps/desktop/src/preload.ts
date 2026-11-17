@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("orca", {
   runAttach: (runId: string) => ipcRenderer.invoke("orca:run-attach", runId),
   runStart: (input: unknown) => ipcRenderer.invoke("orca:run-start", input),
   runCommand: (command: unknown) => ipcRenderer.invoke("orca:run-command", command),
+  runChanges: (input: unknown) => ipcRenderer.invoke("orca:run-changes", input),
+  runLand: (input: unknown, action: string) => ipcRenderer.invoke("orca:run-land", input, action),
   /** Returns a function that stops listening. */
   onRunEvent: (listener: (event: unknown) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, runEvent: unknown) => listener(runEvent);

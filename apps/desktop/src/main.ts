@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { keyStatus, removeKey, saveKey } from "./apiKey";
 import { initRepo, inspectFolder, isDirectory } from "./folders";
-import { attachRun, claudeLogin, commandRun, loadDevKey, startRun, stopAllRuns } from "./runs";
+import { attachRun, claudeLogin, commandRun, landRun, loadDevKey, runChanges, startRun, stopAllRuns } from "./runs";
 
 const DEV_URL = process.env.ORCA_DEV_URL;
 const IS_MAC = process.platform === "darwin";
@@ -180,6 +180,15 @@ function registerBridge() {
   ipcMain.handle(
     "orca:run-command",
     guard((_event, command: unknown) => commandRun(command)),
+  );
+  // A finished run's branch: its changes, and merging, pushing or discarding it.
+  ipcMain.handle(
+    "orca:run-changes",
+    guard((_event, input: unknown) => runChanges(input)),
+  );
+  ipcMain.handle(
+    "orca:run-land",
+    guard((_event, input: unknown, action: unknown) => landRun(input, action, broadcast)),
   );
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Project, RunSummary } from "@orca/shared";
 import { AgentRail } from "../components/AgentRail";
+import { ReviewPanel } from "../components/ReviewPanel";
 import { Boot } from "../components/Boot";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -138,10 +139,10 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
                 <span className="text-faint">{live.inPlace ? "in your folder" : `from ${run.branch}`}</span>
               </button>
             ) : (
-              <span title={live.workBranch === null ? "The run made no changes." : `Started from ${run.branch}`}>
+              <span title={`Started from ${run.branch}`}>
                 <BranchIcon />
                 <b>{run.branch}</b>
-                {live.workBranch === null && <span className="text-faint">no changes</span>}
+                {live.workBranch === null && !live.landed && <span className="text-faint">no changes</span>}
               </span>
             )}
             <span className="max-[960px]:hidden! max-[780px]:inline-flex!">
@@ -179,6 +180,9 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
         </p>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto p-5 max-[780px]:p-4">
+        {state && agent && folder && finished && !live?.inPlace && (live?.workBranch || live?.landed) && (
+          <ReviewPanel run={state.run} branch={{ runId: run.id, folder, base: run.branch }} />
+        )}
         {state && agent ? (
           <div className="mx-auto grid max-w-[1480px] grid-cols-[300px_minmax(0,1fr)] gap-7 max-[920px]:grid-cols-[minmax(0,1fr)]">
             <AgentRail state={state} selectedId={agent.id} onSelect={select} />

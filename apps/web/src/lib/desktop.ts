@@ -1,4 +1,4 @@
-import type { ClientCommand, DeviceInfo, FolderInfo, RunEvent } from "@orca/shared";
+import type { BranchChanges, ClientCommand, DeviceInfo, FolderInfo, LandAction, RunEvent } from "@orca/shared";
 
 /** What the page asks the desktop app to run. */
 export interface DesktopRunInput {
@@ -11,6 +11,14 @@ export interface DesktopRunInput {
   budgetUsd: number;
   /** false: work live in the folder on its current branch instead of in a worktree. */
   worktree: boolean;
+}
+
+/** A finished run's branch, orca/run-<runId>, in the project folder. */
+export interface RunBranch {
+  runId: string;
+  folder: string;
+  /** The branch the run started from. */
+  base: string;
 }
 
 /** All the page ever learns about the Anthropic key; the key itself stays in the desktop app. */
@@ -52,6 +60,10 @@ export interface DesktopBridge {
   /** Starts a real agent run, unless it is already going. Returns its events so far. */
   runStart(input: DesktopRunInput): Promise<RunEvent[]>;
   runCommand(command: ClientCommand): Promise<void>;
+  /** A finished run's commits and diff against the branch it started from. */
+  runChanges(input: RunBranch): Promise<BranchChanges>;
+  /** Merges, pushes or discards a finished run's branch; the result arrives as a run event. */
+  runLand(input: RunBranch, action: LandAction): Promise<void>;
   /** Events of every run in this app; returns a function that stops listening. */
   onRunEvent(listener: (event: RunEvent) => void): () => void;
 }

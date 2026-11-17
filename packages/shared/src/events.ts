@@ -13,7 +13,10 @@ type EventOf<T extends string, P> = {
 
 export type RunEvent =
   | EventOf<"run.started", { run: Run }>
-  | EventOf<"run.updated", { patch: Partial<Pick<Run, "status" | "title" | "detail" | "workBranch" | "inPlace">> }>
+  | EventOf<
+      "run.updated",
+      { patch: Partial<Pick<Run, "status" | "title" | "detail" | "workBranch" | "inPlace" | "landed">> }
+    >
   | EventOf<"run.plan_updated", { plan: PlanStep[] }>
   | EventOf<"run.spend", { spentUsd: number }>
   | EventOf<"run.finished", { status: Extract<RunStatus, "done" | "failed">; summary: string }>

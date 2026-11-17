@@ -43,7 +43,7 @@ describe("startRun", () => {
 
     expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i + 1));
     expect(state.run.status).toBe("done");
-    expect(state.run.summary).toContain("Changes are on branch orca/run-r1");
+    expect(state.run.workBranch).toBe("orca/run-r1");
     expect(Object.keys(state.agents)).toEqual(["builder"]);
     expect(Object.keys(state.subAgents)).toEqual(["builder.worker"]);
     expect(Object.values(state.humanRequests).map((r) => r.type)).toEqual(["approval"]);
