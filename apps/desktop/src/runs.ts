@@ -300,9 +300,27 @@ export async function runChanges(input: unknown): Promise<BranchChanges> {
  * Merges, pushes or discards a finished run's branch, and records it as one more event of the run, so it shows the
  * same after a restart. Pushing opens the pull request page in the browser.
  */
-export async function landRun(input: unknown, action: unknown, broadcast: (event: RunEvent) => void) {
-  const { runId, folder, branch, base } = parseReview(input);
+export function landRun(input: unknown, action: unknown, broadcast: (event: RunEvent) => void): Promise<void> {
+  const review = parseReview(input);
   if (action !== "merge" && action !== "push" && action !== "discard") throw new Error("Unknown action.");
+  // One landing at a time per run: each reads the events the previous one added, and git never runs twice at once.
+  const next = (landing.get(review.runId) ?? Promise.resolve()).then(() => land(review, action, broadcast));
+  const tail = next.catch(() => {});
+  landing.set(review.runId, tail);
+  void tail.then(() => {
+    if (landing.get(review.runId) === tail) landing.delete(review.runId);
+  });
+  return next;
+}
+
+/** Landings in progress or queued, by run id. */
+const landing = new Map<string, Promise<void>>();
+
+async function land(
+  { runId, folder, branch, base }: ReturnType<typeof parseReview>,
+  action: LandAction,
+  broadcast: (event: RunEvent) => void,
+) {
   if (runs.has(runId) && !finished.has(runId)) throw new Error("The run is still going.");
   const events = attachRun(runId);
   const last = events[events.length - 1];
