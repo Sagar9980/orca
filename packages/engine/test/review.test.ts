@@ -105,6 +105,31 @@ describe("before a live run", () => {
     expect(await fs.readFile(path.join(user, "local.cfg"), "utf8")).toBe("mine\n");
     expect(git(user, "rev-parse", "HEAD")).toBe(head);
   });
+
+  /** Runs `sh` in the user's folder while Orca fetches, as if they worked in it at that moment. */
+  async function duringFetch(sh: string) {
+    await commitFile(teammate, "new.txt", "new\n");
+    git(teammate, "push", "-q");
+    const script = path.join(dir, "upload-pack.sh");
+    await fs.writeFile(script, `#!/bin/sh\n(cd "${user}" && ${sh}) >/dev/null 2>&1\nexec git-upload-pack "$@"\n`, {
+      mode: 0o755,
+    });
+    git(user, "config", "remote.origin.uploadpack", script);
+  }
+
+  it("stops when the folder switched branches during the fetch", async () => {
+    await duringFetch("git checkout -q -b elsewhere");
+    await expect(openFolder(user, main)).rejects.toThrow(/switched away from/);
+    expect(await fs.stat(path.join(user, "new.txt")).catch(() => null)).toBeNull();
+  });
+
+  it("doesn't pull when the folder got a commit during the fetch", async () => {
+    await duringFetch(`git ${as.join(" ")} commit -q --allow-empty -m mine`);
+    const ws = await openFolder(user, main);
+    expect(ws.synced).toMatch(/changed while Orca was checking/);
+    expect(git(user, "log", "-1", "--format=%s")).toBe("mine");
+    expect(ws.base).toBe(git(user, "rev-parse", "HEAD"));
+  });
 });
 
 describe("after a run", () => {

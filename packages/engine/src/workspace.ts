@@ -183,7 +183,17 @@ export async function openFolder(project: string, from?: string): Promise<Worksp
   if (branch && head) {
     // Pull only when it can't touch the user's work: a fast-forward of a clean folder.
     const { start, note } = await latest(repo, branch, head);
+    // The fetch can take a while. A folder now on another branch can't be run on as asked; one that got a commit or
+    // edits meanwhile is run on, but not pulled into.
+    if ((await git(repo, "symbolic-ref", "--short", "-q", "HEAD").catch(() => "")) !== branch) {
+      throw new Error(`Your folder switched away from ${branch} while the run was starting. Start it again.`);
+    }
+    const moved =
+      start !== head &&
+      ((await git(repo, "rev-parse", "HEAD").catch(() => "")) !== head ||
+        (!dirty && (await git(repo, "status", "--porcelain")) !== ""));
     if (start === head) synced = note;
+    else if (moved) synced = `Your folder changed while Orca was checking ${branch}'s remote, so nothing was pulled.`;
     else if (dirty)
       synced = `There are new commits on ${branch}'s remote; not pulled, since you have uncommitted changes.`;
     else {
