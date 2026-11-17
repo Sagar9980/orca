@@ -187,8 +187,15 @@ export async function openFolder(project: string, from?: string): Promise<Worksp
     else if (dirty)
       synced = `There are new commits on ${branch}'s remote; not pulled, since you have uncommitted changes.`;
     else {
-      await git(repo, "merge", "-q", "--ff-only", start);
-      synced = note;
+      // --no-overwrite-ignore: ignored files such as a local config are the user's too, so never replace them.
+      try {
+        await git(repo, "merge", "-q", "--ff-only", "--no-overwrite-ignore", start);
+        synced = note;
+      } catch (err) {
+        synced = /would be overwritten/.test((err as Error).message)
+          ? `There are new commits on ${branch}'s remote; not pulled, since they would overwrite files in your folder.`
+          : `Couldn't pull ${branch}'s new commits: ${(err as Error).message}`;
+      }
     }
   }
   const base = await git(repo, "rev-parse", "HEAD").catch(() => "");

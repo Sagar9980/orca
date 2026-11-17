@@ -92,6 +92,21 @@ describe("before a run", () => {
   });
 });
 
+describe("before a live run", () => {
+  it("doesn't pull over the user's ignored files", async () => {
+    await commitFile(teammate, "local.cfg", "theirs\n");
+    git(teammate, "push", "-q");
+    await fs.appendFile(path.join(user, ".git/info/exclude"), "local.cfg\n");
+    await fs.writeFile(path.join(user, "local.cfg"), "mine\n");
+    const head = git(user, "rev-parse", "HEAD");
+
+    const ws = await openFolder(user);
+    expect(ws.synced).toMatch(/would overwrite files in your folder/);
+    expect(await fs.readFile(path.join(user, "local.cfg"), "utf8")).toBe("mine\n");
+    expect(git(user, "rev-parse", "HEAD")).toBe(head);
+  });
+});
+
 describe("after a run", () => {
   it("shows the branch's commits and files", async () => {
     const branch = await finishedRun();
