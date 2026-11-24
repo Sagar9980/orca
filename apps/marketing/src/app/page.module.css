@@ -9,6 +9,8 @@
 
 .top { display: flex; align-items: center; gap: 10px; font-family: var(--f-display); font-weight: 700; font-size: 21px; letter-spacing: -0.02em; }
 .mark { display: inline-flex; color: var(--accent); }
+.github { margin-left: auto; display: inline-flex; color: var(--muted); transition: color 0.15s; }
+.github:hover { color: var(--fg); }
 
 .hero {
   display: grid;
