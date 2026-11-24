@@ -148,9 +148,6 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
             <span className="max-[960px]:hidden! max-[780px]:inline-flex!">
               Elapsed <b>{formatClock((live.finishedAt ? Date.parse(live.finishedAt) : now) - Date.parse(live.startedAt))}</b>
             </span>
-            <span>
-              Spend <b>${live.budget.spentUsd.toFixed(2)}</b> / ${run.budgetUsd}
-            </span>
           </div>
         )}
         {live &&
@@ -205,14 +202,13 @@ export function Workspace({ project, run }: { project: Project; run: RunSummary 
                     A Builder agent will work live in your {project.name} folder on <b>{run.branch}</b>, without a
                     worktree. You'll see its changes as it makes them, and they're left uncommitted for you to review.
                     It edits files and runs commands on its own, asks you before installing packages, going online or
-                    reading .env files, and stops at ${run.budgetUsd}.
+                    reading .env files.
                   </p>
                 ) : (
                   <p>
                     A Builder agent will work on {project.name} in a worktree on its own <b>orca/run-*</b> branch, made
                     from <b>{run.branch}</b>. Your folder isn't touched. It edits files and runs commands on its own,
-                    asks you before installing packages, going online or reading .env files, and stops at $
-                    {run.budgetUsd}.
+                    asks you before installing packages, going online or reading .env files.
                   </p>
                 )}
                 {changes > 0 && run.worktree !== false && (
